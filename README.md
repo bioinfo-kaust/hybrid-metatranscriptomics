@@ -7,7 +7,8 @@ anything is assembled, then annotates it, quantifies it and tests it for differe
 It was developed for a *Cassiopea andromeda* UV-radiation experiment (a jellyfish holobiont with
 Symbiodiniaceae symbionts). Every value that describes that experiment — the species, the
 symbiont set, the treatments, the contrasts, the tool arguments — is a parameter, so the same
-workflow runs another host/symbiont system.
+workflow runs another host/symbiont system. The workflow map, with every step, tool and option,
+is in [§1](#1-what-it-does).
 
 ```bash
 module load nextflow
@@ -48,27 +49,7 @@ outlives an interactive session's wall limit. It reads `PROJ`, `PARAMS_FILE`, `S
 
 ## 1. What it does
 
-```
-raw reads ─┬─ short: merge lanes ─ fastp ─ rRNA depletion ─ FastQC ─┐
-           └─ long : normalise   ─────── rRNA depletion ───────────┤
-                                                                   │
-                            contaminant removal at the READ level ─┤   (one combined index:
-                                                                   │    best placement wins)
-   ┌───────────────────────────────────────────────────────────────┘
-   │
-   ├─ A  long reads on the genome    pbmm2 + isoseq collapse   ─┐
-   ├─ B  long reads, reference-free  cd-hit-est                 │
-   ├─ C  short reads on the genome   STAR + StringTie + merge   ├─ reference ladder ─ BUSCO
-   └─ D  short reads de novo         Trinity                    ─┘        │
-                                                                          │
-        TransDecoder ─ DIAMOND ─ eggNOG ─ InterProScan ─ annotation table ─┤
-                                                                          │
-        salmon (decoy-aware) ─ DESeq2 ─ GO/KEGG enrichment ─ figures ──────┤
-                                                                          │
-        gene identity from genomic loci (optional rebuild) ────────────────┤
-                                                                          │
-        MultiQC · run_summary.txt · interactive dashboard ────────────────┘
-```
+![hybrid-metatranscriptomics metro map](assets/metro_map.svg)
 
 **Why contaminant removal comes first.** Separating host from symbiont *after* assembly cannot
 undo what the assembler already did: chimeric contigs and conserved shared regions are baked in.
@@ -399,8 +380,8 @@ bin/                        analysis scripts on PATH inside every task
 assets/                     example samplesheets, contrasts, and the params files
                             (params_cassiopea_uv.yml, params_example_other_species.yml)
 extra/                      out-of-pipeline tools: the comparison against a published
-                            reference, the PacBio FL-count → membership converter, and the
-                            dashboard smoke test
+                            reference, the PacBio FL-count → membership converter, the
+                            dashboard smoke test, and the metro-map generator
 conf/                       see §4
 run_slurm.sh                SLURM driver job that launches and waits for a run
 ```

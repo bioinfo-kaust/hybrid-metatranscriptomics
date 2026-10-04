@@ -1,0 +1,240 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="930" viewBox="0 0 1800 930">
+<rect width="1800" height="930" fill="#ffffff"/>
+<text x="24" y="30" font-family="Helvetica, Arial, sans-serif" font-size="20" font-weight="700" fill="#222222">hybrid-metatranscriptomics</text>
+<text x="300" y="30" font-family="Helvetica, Arial, sans-serif" font-size="13" fill="#555555">host-only reference transcriptome from long + short reads, contaminant reads removed before assembly</text>
+<rect x="20" y="44" width="150" height="456" rx="10" fill="#f4f6f8"/>
+<text x="32" y="68" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#444"><tspan fill="#999">1</tspan>  Inputs</text>
+<rect x="176" y="44" width="468" height="456" rx="10" fill="#f9fafb"/>
+<text x="188" y="68" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#444"><tspan fill="#999">2</tspan>  Read preprocessing</text>
+<rect x="650" y="44" width="140" height="456" rx="10" fill="#f4f6f8"/>
+<text x="662" y="68" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#444"><tspan fill="#999">3</tspan>  Decontamination</text>
+<rect x="796" y="44" width="468" height="456" rx="10" fill="#f9fafb"/>
+<text x="808" y="68" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#444"><tspan fill="#999">4</tspan>  Four assembly routes</text>
+<rect x="1270" y="44" width="510" height="456" rx="10" fill="#f4f6f8"/>
+<text x="1282" y="68" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#444"><tspan fill="#999">5</tspan>  Reference ladder</text>
+<rect x="1222" y="512" width="558" height="404" rx="10" fill="#f9fafb"/>
+<text x="1686" y="536" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#444"><tspan fill="#999">6</tspan>  Quantification &amp; annotation</text>
+<rect x="796" y="512" width="420" height="404" rx="10" fill="#f4f6f8"/>
+<text x="808" y="536" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#444"><tspan fill="#999">7</tspan>  Differential expression</text>
+<rect x="20" y="512" width="770" height="404" rx="10" fill="#f9fafb"/>
+<text x="32" y="536" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#444"><tspan fill="#999">8</tspan>  Reporting</text>
+<path d="M 60,440 L 860,440" fill="none" stroke="#737373" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 60,180 L 750,180 L 780,150 L 1320,150" fill="none" stroke="#e6550d" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 750,180 L 785,215 L 1320,215" fill="none" stroke="#e6550d" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 60,300 L 1320,300" fill="none" stroke="#2171b5" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 800,300 L 860,360 L 1320,360" fill="none" stroke="#2171b5" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 60,360 L 106,314 L 1110,314" fill="none" stroke="#6baed6" stroke-width="8" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="10 6"/>
+<path d="M 800,314 L 860,374 L 1000,374" fill="none" stroke="#6baed6" stroke-width="8" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="10 6"/>
+<path d="M 1320,262 L 1700,262 L 1700,640" fill="none" stroke="#756bb1" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 1700,640 L 1700,800 L 1000,800" fill="none" stroke="#31a354" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 1700,640 L 860,640" fill="none" stroke="#d6266b" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 1500,640 L 1440,700 L 1160,700" fill="none" stroke="#17a2b8" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 1500,640 L 1430,570 L 1330,570" fill="none" stroke="#b07aa1" stroke-width="8" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="10 6"/>
+<path d="M 860,640 L 420,640" fill="none" stroke="#8c6d31" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/>
+<rect x="50" y="170" width="20" height="20" rx="4" fill="#e6550d" stroke="#222222" stroke-width="2.5"/>
+<text x="40" y="148" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">Long reads</text>
+<text x="40" y="162" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">Iso-Seq HQ isoforms</text>
+<rect x="50" y="290" width="20" height="20" rx="4" fill="#2171b5" stroke="#222222" stroke-width="2.5"/>
+<text x="40" y="268" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">Short reads</text>
+<text x="40" y="282" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">paired-end</text>
+<rect x="50" y="350" width="20" height="20" rx="4" fill="#6baed6" stroke="#222222" stroke-width="2.5"/>
+<text x="40" y="390" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">Assembly-only reads</text>
+<text x="40" y="404" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">optional, not tested</text>
+<rect x="50" y="430" width="20" height="20" rx="4" fill="#737373" stroke="#222222" stroke-width="2.5"/>
+<text x="40" y="470" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">Genome + contaminants</text>
+<text x="40" y="484" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">FASTA or accession</text>
+<circle cx="230" cy="180" r="8" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="230" y="148" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">To FASTA</text>
+<text x="230" y="162" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">seqkit fq2fa if FASTQ</text>
+<rect x="219" y="289" width="22" height="36" rx="11" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="230" y="268" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">Merge lanes</text>
+<text x="230" y="282" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">cat</text>
+<rect x="339" y="289" width="22" height="36" rx="11" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="350" y="247" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">fastp</text>
+<text x="350" y="261" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">trim, filter</text>
+<rect x="307.2" y="267" width="85.6" height="15" rx="7.5" fill="#eef1f4" stroke="#c9d1d9"/>
+<text x="350.0" y="278" text-anchor="middle" font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="10" fill="#333">--skip_fastp</text>
+<rect x="459" y="169" width="22" height="156" rx="11" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="470" y="127" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">rRNA depletion</text>
+<text x="470" y="141" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">BBDuk · SILVA/Rfam</text>
+<rect x="430.4" y="147" width="79.3" height="15" rx="7.5" fill="#eef1f4" stroke="#c9d1d9"/>
+<text x="470.0" y="158" text-anchor="middle" font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="10" fill="#333">--skip_rrna</text>
+<rect x="579" y="289" width="22" height="36" rx="11" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="590" y="268" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">FastQC</text>
+<text x="590" y="282" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">read QC</text>
+<circle cx="350" cy="440" r="8" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="350" y="470" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">Fetch references</text>
+<text x="350" y="484" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">datasets · UniProt · SortMeRNA</text>
+<circle cx="590" cy="440" r="8" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="590" y="470" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">Combined index</text>
+<text x="590" y="484" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">minimap2 host + contam.</text>
+<rect x="709" y="169" width="22" height="282" rx="11" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="720" y="127" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">Read decontamination</text>
+<text x="720" y="141" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">minimap2 · best hit wins</text>
+<rect x="667.8" y="147" width="104.5" height="15" rx="7.5" fill="#eef1f4" stroke="#c9d1d9"/>
+<text x="720.0" y="158" text-anchor="middle" font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="10" fill="#333">--skip_decontam</text>
+<text x="735" y="470" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">read-level</text>
+<text x="735" y="484" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">before assembly</text>
+<text x="806" y="144" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#e6550d">A</text>
+<text x="806" y="239" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#e6550d">B</text>
+<text x="806" y="292" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#2171b5">C</text>
+<text x="840" y="396" font-family="Helvetica, Arial, sans-serif" font-size="12" font-weight="700" fill="#2171b5">D</text>
+<circle cx="860" cy="150" r="8" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="860" y="118" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">pbmm2</text>
+<text x="860" y="132" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">align to genome</text>
+<circle cx="965" cy="150" r="8" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="965" y="118" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">isoseq collapse</text>
+<text x="965" y="132" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">genome loci</text>
+<circle cx="1110" cy="150" r="8" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="1110" y="97" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">Genome sequence</text>
+<text x="1110" y="111" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">models from genome</text>
+<rect x="1023.1" y="117" width="173.8" height="15" rx="7.5" fill="#eef1f4" stroke="#c9d1d9"/>
+<text x="1110.0" y="128" text-anchor="middle" font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="10" fill="#333">--longread_genome_sequence</text>
+<circle cx="1220" cy="150" r="8" fill="#fff" stroke="#222222" stroke-width="3" stroke-dasharray="4 3"/>
+<text x="1220" y="180" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">SQANTI3</text>
+<text x="1220" y="194" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">QC report</text>
+<rect x="1174.0" y="200" width="91.9" height="15" rx="7.5" fill="#eef1f4" stroke="#c9d1d9"/>
+<text x="1220.0" y="211" text-anchor="middle" font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="10" fill="#333">--skip_sqanti</text>
+<circle cx="880" cy="215" r="8" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="880" y="245" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">vsearch</text>
+<text x="880" y="259" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">reference-free</text>
+<rect x="830.9" y="265" width="98.2" height="15" rx="7.5" fill="#eef1f4" stroke="#c9d1d9"/>
+<text x="880.0" y="276" text-anchor="middle" font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="10" fill="#333">--skip_reffree</text>
+<circle cx="860" cy="440" r="8" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="860" y="470" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">STAR index</text>
+<rect x="989" y="289" width="22" height="36" rx="11" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="1000" y="268" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">STAR</text>
+<text x="1000" y="282" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">align</text>
+<rect x="1099" y="289" width="22" height="36" rx="11" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="1110" y="247" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">StringTie</text>
+<text x="1110" y="261" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">per sample</text>
+<rect x="1054.6" y="267" width="110.8" height="15" rx="7.5" fill="#eef1f4" stroke="#c9d1d9"/>
+<text x="1110.0" y="278" text-anchor="middle" font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="10" fill="#333">--skip_stringtie</text>
+<circle cx="1220" cy="300" r="8" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="1220" y="268" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">Merge</text>
+<text x="1220" y="282" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">gffcompare: new loci</text>
+<rect x="989" y="349" width="22" height="36" rx="11" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="1000" y="404" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">Trinity</text>
+<text x="1000" y="418" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">de novo</text>
+<rect x="954.0" y="424" width="91.9" height="15" rx="7.5" fill="#eef1f4" stroke="#c9d1d9"/>
+<text x="1000.0" y="435" text-anchor="middle" font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="10" fill="#333">--skip_denovo</text>
+<circle cx="1150" cy="360" r="8" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="1150" y="390" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">Novel loci</text>
+<text x="1150" y="404" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">vsearch + minimap2</text>
+<rect x="1309" y="139" width="22" height="232" rx="11" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="1320" y="97" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">Reference ladder</text>
+<text x="1320" y="111" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">A → +C → +D → +B → dedup</text>
+<rect x="1267.8" y="117" width="104.5" height="15" rx="7.5" fill="#eef1f4" stroke="#c9d1d9"/>
+<text x="1320.0" y="128" text-anchor="middle" font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="10" fill="#333">--dge_reference</text>
+<circle cx="1450" cy="262" r="8" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="1450" y="209" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">BUSCO</text>
+<text x="1450" y="223" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">every rung</text>
+<rect x="1407.2" y="229" width="85.6" height="15" rx="7.5" fill="#eef1f4" stroke="#c9d1d9"/>
+<text x="1450.0" y="240" text-anchor="middle" font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="10" fill="#333">--skip_busco</text>
+<circle cx="1570" cy="262" r="8" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="1570" y="230" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">Contribution</text>
+<text x="1570" y="244" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">per source, per rung</text>
+<rect x="1690" y="252" width="20" height="20" rx="4" fill="#756bb1" stroke="#222222" stroke-width="2.5"/>
+<text x="1688" y="292" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">Reference transcriptome</text>
+<text x="1688" y="306" text-anchor="end" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">selected rung</text>
+<circle cx="1620" cy="640" r="8" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="1620" y="670" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">Expression filter</text>
+<text x="1620" y="684" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">TPM ≥ 1 in ≥ 3</text>
+<rect x="1561.5" y="690" width="117.1" height="15" rx="7.5" fill="#eef1f4" stroke="#c9d1d9"/>
+<text x="1620.0" y="701" text-anchor="middle" font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="10" fill="#333">--expr_filter_tpm</text>
+<circle cx="1500" cy="640" r="8" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="1512" y="608" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">salmon</text>
+<text x="1512" y="622" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">decoy-aware quant</text>
+<circle cx="1320" cy="700" r="8" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="1320" y="730" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">Gene maps</text>
+<text x="1320" y="744" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">locus · tx2gene · Corset</text>
+<rect x="1213.5" y="750" width="117.1" height="15" rx="7.5" fill="#eef1f4" stroke="#c9d1d9"/>
+<text x="1272.0" y="761" text-anchor="middle" font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="10" fill="#333">--dge_primary_map</text>
+<rect x="1334.6" y="750" width="91.9" height="15" rx="7.5" fill="#eef1f4" stroke="#c9d1d9"/>
+<text x="1380.5" y="761" text-anchor="middle" font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="10" fill="#333">--skip_corset</text>
+<circle cx="1330" cy="570" r="8" fill="#fff" stroke="#222222" stroke-width="3" stroke-dasharray="4 3"/>
+<text x="1330" y="517" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">IsoformSwitchAnalyzeR</text>
+<text x="1330" y="531" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">DTU, off by default</text>
+<rect x="1274.6" y="537" width="110.8" height="15" rx="7.5" fill="#eef1f4" stroke="#c9d1d9"/>
+<text x="1330.0" y="548" text-anchor="middle" font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="10" fill="#333">--skip_dtu false</text>
+<circle cx="1600" cy="800" r="8" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="1600" y="830" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">TransDecoder</text>
+<text x="1600" y="844" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">ORFs → peptides</text>
+<rect x="1541.5" y="850" width="117.1" height="15" rx="7.5" fill="#eef1f4" stroke="#c9d1d9"/>
+<text x="1600.0" y="861" text-anchor="middle" font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="10" fill="#333">--skip_annotation</text>
+<circle cx="1480" cy="800" r="8" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="1480" y="830" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">DIAMOND</text>
+<text x="1480" y="844" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">Swiss-Prot + Tox-Prot</text>
+<circle cx="1360" cy="800" r="8" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="1360" y="830" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">eggNOG-mapper</text>
+<text x="1360" y="844" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">GO / KEGG</text>
+<rect x="1314.0" y="850" width="91.9" height="15" rx="7.5" fill="#eef1f4" stroke="#c9d1d9"/>
+<text x="1360.0" y="861" text-anchor="middle" font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="10" fill="#333">--skip_eggnog</text>
+<circle cx="1250" cy="800" r="8" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="1250" y="830" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">InterProScan</text>
+<text x="1250" y="844" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">Pfam, SMART, ...</text>
+<rect x="1185.2" y="850" width="129.7" height="15" rx="7.5" fill="#eef1f4" stroke="#c9d1d9"/>
+<text x="1250.0" y="861" text-anchor="middle" font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="10" fill="#333">--skip_interproscan</text>
+<circle cx="1110" cy="800" r="8" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="1110" y="830" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">Annotation table</text>
+<text x="1110" y="844" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">per transcript &amp; gene</text>
+<rect x="1149" y="629" width="22" height="82" rx="11" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="1160" y="587" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">DESeq2</text>
+<text x="1160" y="601" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">tximport · apeglm</text>
+<rect x="1123.5" y="607" width="73.0" height="15" rx="7.5" fill="#eef1f4" stroke="#c9d1d9"/>
+<text x="1160.0" y="618" text-anchor="middle" font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="10" fill="#333">--skip_dge</text>
+<rect x="989" y="629" width="22" height="182" rx="11" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="1000" y="587" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">Enrichment</text>
+<text x="1000" y="601" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">clusterProfiler ORA/GSEA</text>
+<rect x="941.5" y="607" width="117.1" height="15" rx="7.5" fill="#eef1f4" stroke="#c9d1d9"/>
+<text x="1000.0" y="618" text-anchor="middle" font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="10" fill="#333">--skip_enrichment</text>
+<circle cx="860" cy="640" r="8" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="860" y="587" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">Figures</text>
+<text x="860" y="601" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">volcano, PCA, heatmaps</text>
+<rect x="810.9" y="607" width="98.2" height="15" rx="7.5" fill="#eef1f4" stroke="#c9d1d9"/>
+<text x="860.0" y="618" text-anchor="middle" font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="10" fill="#333">--skip_figures</text>
+<circle cx="700" cy="640" r="8" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="700" y="587" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">MultiQC</text>
+<text x="700" y="601" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">all QC</text>
+<rect x="650.9" y="607" width="98.2" height="15" rx="7.5" fill="#eef1f4" stroke="#c9d1d9"/>
+<text x="700.0" y="618" text-anchor="middle" font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="10" fill="#333">--skip_multiqc</text>
+<circle cx="560" cy="640" r="8" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="560" y="587" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">Dashboard</text>
+<text x="560" y="601" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">interactive HTML</text>
+<rect x="504.6" y="607" width="110.8" height="15" rx="7.5" fill="#eef1f4" stroke="#c9d1d9"/>
+<text x="560.0" y="618" text-anchor="middle" font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="10" fill="#333">--skip_dashboard</text>
+<rect x="410" y="630" width="20" height="20" rx="4" fill="#8c6d31" stroke="#222222" stroke-width="2.5"/>
+<text x="420" y="608" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">Results</text>
+<text x="420" y="622" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="11" fill="#555555">--outdir</text>
+<text x="40" y="700" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222">Legend</text>
+<path d="M 40,722 L 76,722" fill="none" stroke="#e6550d" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="86" y="726" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#222222">Long reads</text>
+<path d="M 230,722 L 266,722" fill="none" stroke="#2171b5" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="276" y="726" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#222222">Short reads</text>
+<path d="M 420,722 L 456,722" fill="none" stroke="#6baed6" stroke-width="7" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="10 6"/>
+<text x="466" y="726" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#222222">Assembly-only reads</text>
+<path d="M 40,746 L 76,746" fill="none" stroke="#737373" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="86" y="750" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#222222">Genome &amp; databases</text>
+<path d="M 230,746 L 266,746" fill="none" stroke="#756bb1" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="276" y="750" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#222222">Transcriptome</text>
+<path d="M 420,746 L 456,746" fill="none" stroke="#31a354" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="466" y="750" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#222222">Annotation</text>
+<path d="M 40,770 L 76,770" fill="none" stroke="#d6266b" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="86" y="774" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#222222">Quantification &amp; DE</text>
+<path d="M 230,770 L 266,770" fill="none" stroke="#17a2b8" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="276" y="774" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#222222">Gene maps</text>
+<path d="M 420,770 L 456,770" fill="none" stroke="#b07aa1" stroke-width="7" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="10 6"/>
+<text x="466" y="774" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#222222">Isoform switching</text>
+<path d="M 40,794 L 76,794" fill="none" stroke="#8c6d31" stroke-width="7" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="86" y="798" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#222222">Reporting</text>
+<circle cx="630" cy="722" r="8" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="646" y="726" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#222222">step</text>
+<circle cx="630" cy="746" r="8" fill="#fff" stroke="#222222" stroke-width="3" stroke-dasharray="4 3"/>
+<text x="646" y="750" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#222222">optional / QC-only step</text>
+<rect x="619" y="759" width="22" height="30" rx="11" fill="#fff" stroke="#222222" stroke-width="3"/>
+<text x="646" y="778" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#222222">shared step (several inputs)</text>
+<text x="622" y="814" text-anchor="start" font-family="Helvetica, Arial, sans-serif" font-size="13" font-weight="700" fill="#222222"></text>
+<rect x="622.0" y="820" width="60.4" height="15" rx="7.5" fill="#eef1f4" stroke="#c9d1d9"/>
+<text x="652.2" y="831" text-anchor="middle" font-family="Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="10" fill="#333">--option</text>
+<text x="686" y="827" font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#222222">parameter that switches or sets the step</text>
+</svg>

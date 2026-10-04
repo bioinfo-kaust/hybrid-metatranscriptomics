@@ -1,7 +1,7 @@
 /*
  * Stage 3 — build the reference transcriptome from four complementary sources:
  *   A  long reads on the genome   (pbmm2 + isoseq collapse)   -> real loci, isoform structure
- *   B  long reads, reference-free (cd-hit-est)                -> recovers what the draft genome misses
+ *   B  long reads, reference-free (vsearch)                   -> recovers what the draft genome misses
  *   C  short reads on the genome  (STAR + StringTie)          -> loci the long reads did not sample
  *   D  short reads de novo        (Trinity)                   -> loci absent from the genome
  * Each source is layered onto the previous one and its contribution is measured, so the ladder

@@ -1,0 +1,4 @@
+sample,condition,reads
+Control,Control,data/pacbio/Control_flnc.fastq
+UVB,UVB,data/pacbio/UVB_flnc.fastq
+UVR,UVAUVB,data/pacbio/UVR_flnc.fastq

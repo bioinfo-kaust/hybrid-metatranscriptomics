@@ -1,0 +1,2 @@
+sample,condition,replicate,fastq_1,fastq_2
+T_public,,,assets/test/reads/T_public_R1.fastq.gz,assets/test/reads/T_public_R2.fastq.gz

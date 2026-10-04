@@ -1,0 +1,52 @@
+# Example: running the workflow on a different species and dataset.
+#
+#   nextflow run . -profile slurm,envmodules -params-file assets/params_example_other_species.yml
+#
+# Unset parameters keep the generic defaults in nextflow.config. params_cassiopea_uv.yml is the
+# complete file for the experiment the workflow was developed on.
+
+# ---- input ----
+samplesheet: /data/myproject/samplesheet.csv            # sample,condition,replicate,fastq_1,fastq_2
+longread_samplesheet: /data/myproject/longreads.csv     # sample,condition,reads   (or null)
+outdir: /data/myproject/results_nf
+
+# ---- references: downloaded, not staged by hand ----
+genome: null                                            # null -> download the accession below
+genome_accession: GCF_000002985.6                       # e.g. C. elegans
+genome_name: C_elegans_GCF_000002985.6
+star_index: null                                        # built from the genome
+
+# Genomes whose reads are removed before assembly (bacterial contamination, a symbiont, a host
+# in a parasite experiment, ...). Downloaded and combined automatically.
+contaminant_fasta: null
+contaminant_accessions: GCF_000005845.2                 # E. coli K-12
+contaminant_prefix: CONTAM_
+
+rrna_fasta: null                                        # null -> download the SortMeRNA set
+
+# ---- annotation ----
+diamond_db_dir: null                                    # null -> download Swiss-Prot (+ specialist)
+specialist_name: null                                   # no second protein DB
+specialist_url: null
+eggnog_data_dir: /shared/db/eggnog
+busco_lineage: nematoda_odb10
+interest_regex: 'heat shock|HSP\d|chaperone'            # flags a family of interest in the table
+interest_label: heat_stress_family
+
+# ---- experimental design ----
+condition_column: condition
+reference_level: control
+design: '~ condition'
+contrasts: /data/myproject/contrasts.csv                # id,factor,level,reference
+strandedness: reverse                                   # reverse | forward | unstranded
+
+# ---- what to run ----
+dge_reference: final_nr
+run_locus_rebuild: true
+skip_dtu: true
+skip_interproscan: false
+
+# ---- environment ----
+r_libs: /shared/envs/Rlib
+extra_path: /shared/envs/tools/bin                      # TransDecoder, gffread
+trinity_max_memory: 240G

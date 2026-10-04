@@ -1,0 +1,12 @@
+# MultiQC config for the Cassiopea project.
+# NOTE: use extra_fn_clean_exts (appends) and never fn_clean_exts (replaces MultiQC's
+# defaults, which would leave names like "S01_Control_B.Log.final.out").
+extra_fn_clean_exts:
+  - "_R1.merged"
+  - "_R2.merged"
+  - ".rrna_clean"
+  - ".fastp"
+  - ".clean"
+  - ".bbduk"
+  - "_001"
+title: "Cassiopea andromeda UV transcriptomics — full QC"

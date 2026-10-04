@@ -1,0 +1,8 @@
+sample,condition,replicate,fastq_1,fastq_2
+T_Control_A,Control,A,assets/test/reads/T_Control_A_L001_R1.fastq.gz,assets/test/reads/T_Control_A_L001_R2.fastq.gz
+T_Control_A,Control,A,assets/test/reads/T_Control_A_L002_R1.fastq.gz,assets/test/reads/T_Control_A_L002_R2.fastq.gz
+T_Control_B,Control,B,assets/test/reads/T_Control_B_L001_R1.fastq.gz,assets/test/reads/T_Control_B_L001_R2.fastq.gz
+T_UVB_A,UVB,A,assets/test/reads/T_UVB_A_L001_R1.fastq.gz,assets/test/reads/T_UVB_A_L001_R2.fastq.gz
+T_UVB_B,UVB,B,assets/test/reads/T_UVB_B_L001_R1.fastq.gz,assets/test/reads/T_UVB_B_L001_R2.fastq.gz
+T_UVAUVB_A,UVAUVB,A,assets/test/reads/T_UVAUVB_A_L001_R1.fastq.gz,assets/test/reads/T_UVAUVB_A_L001_R2.fastq.gz
+T_UVAUVB_B,UVAUVB,B,assets/test/reads/T_UVAUVB_B_L001_R1.fastq.gz,assets/test/reads/T_UVAUVB_B_L001_R2.fastq.gz

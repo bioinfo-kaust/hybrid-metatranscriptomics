@@ -1,0 +1,19 @@
+.nextflow/
+.nextflow.log*
+work/
+results*/
+*.bak
+.DS_Store
+._*
+__pycache__/
+*.pyc
+local/
+
+# not part of the workflow: AI-assistant files, planning notes, project run logs
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+docs/
+*.plan.md
+plans.md
+notes/

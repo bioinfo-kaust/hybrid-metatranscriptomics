@@ -1,0 +1,55 @@
+# The Cassiopea andromeda UV-radiation experiment — the dataset this workflow was developed on.
+#
+#   nextflow run . -profile <executor>,envmodules -params-file my_params.yml   (a copy of this file)
+#
+# This file describes the EXPERIMENT (design, contrasts, references by accession, run settings).
+# Copy it and add your site paths (reads, outdir; optionally staged references and databases),
+# or keep those in a separate config passed with -c. Without staged references, the genome and
+# the symbiont genomes are downloaded by accession, the rRNA, Swiss-Prot and Tox-Prot databases
+# are downloaded, and BUSCO fetches its lineage. Only eggnog_data_dir (or --skip_eggnog) must be supplied.
+# See params_example_other_species.yml for the same layout on another species.
+
+# ---- input reads: add these to your copy, or to a site config (-c) if you keep paths separate ----
+# They are left out here because a params file overrides a -c config: read locations set in the
+# shared file would replace a site config's. The example sheets in assets/ show the layout:
+#   samplesheet          = assets/samplesheet_short.csv     15 Illumina samples: 3 treatments x
+#                                                           5 replicates, 2 lanes each (merged)
+#   longread_samplesheet = assets/samplesheet_long.csv      3 PacBio Iso-Seq conditions, no
+#                                                           replicates -> pooled HQ isoform FASTA
+#   assembly_samplesheet = assets/samplesheet_assembly_gacesa.csv   (see below)
+# The Iso-Seq run was barcoded and pooled before polishing, so the HQ transcript FASTA carries
+# no per-sample identity. A membership table built from the run's own FL count matrix
+# (extra/pacbio_fl_counts_to_membership.py) restores it; set --longread_membership to use it.
+
+# Gacesa et al. (SRR10388048/49: one C. andromeda, 2 libraries, 2x101, stranded RF as measured).
+# Assembly only. Our 15 libraries are ~70% duplicate pairs and assemble to CDS BUSCO 62.6%
+# from 75.8M distinct pairs; these 14.5M distinct pairs alone give 76.9% through the same steps.
+# They fill genes our reads cover too unevenly to assemble whole. Download them from SRA and set
+# assembly_samplesheet; without it the assembly uses the 15 libraries only.
+
+# ---- experiment ----
+condition_column: condition
+reference_level: Control
+design: "~ condition"
+contrasts: "${projectDir}/assets/contrasts.csv"
+strandedness: reverse                     # TruSeq Stranded mRNA -> salmon ISR, StringTie --rf, Trinity RF
+
+# ---- references (by accession) ----
+genome_accession: GCA_018155075.1         # C. andromeda draft genome
+genome_name: C_andromeda_GCA_018155075.1
+# Symbiodiniaceae genomes removed at the read level, before assembly
+contaminant_accessions: "GCA_977109205.1,GCA_965643015.1,GCA_947184155.2"   # S. microadriaticum, B. minutum, C. goreaui
+contaminant_prefix: SYM_
+
+# ---- annotation ----
+specialist_name: toxprot
+interest_label: UV_stress_family
+busco_lineage: cnidaria_odb12
+
+# ---- assembly ----
+dge_reference: all_sources_dedup          # cross-source deduped 4-source set (the run's DGE reference)
+trinity_max_memory: 240G
+
+# ---- reporting ----
+multiqc_config: "${projectDir}/assets/multiqc_config.yaml"
+dashboard_title: "Cassiopea andromeda UV — host-only transcriptome run"

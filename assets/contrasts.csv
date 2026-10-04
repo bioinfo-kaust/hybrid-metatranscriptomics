@@ -1,0 +1,4 @@
+id,factor,level,reference
+UVB_vs_Control,condition,UVB,Control
+UVAUVB_vs_Control,condition,UVAUVB,Control
+UVAUVB_vs_UVB,condition,UVAUVB,UVB

@@ -8,7 +8,11 @@ It was developed for a *Cassiopea andromeda* UV-radiation experiment (a jellyfis
 Symbiodiniaceae symbionts). Every value that describes that experiment — the species, the
 symbiont set, the treatments, the contrasts, the tool arguments — is a parameter, so the same
 workflow runs another host/symbiont system. The workflow map, with every step, tool and option,
-is in [§1](#1-what-it-does).
+is shown below.
+
+## 1. Usage
+
+![hybrid-metatranscriptomics metro map](assets/metro_map.svg)
 
 ```bash
 module load nextflow
@@ -45,11 +49,6 @@ first level alphabetically.
 outlives an interactive session's wall limit. It reads `PROJ`, `PARAMS_FILE`, `SITE_CONFIG` and
 `NF_PROFILE` from the environment; see the script's header.
 
----
-
-## 1. What it does
-
-![hybrid-metatranscriptomics metro map](assets/metro_map.svg)
 
 **Why contaminant removal comes first.** Separating host from symbiont *after* assembly cannot
 undo what the assembler already did: chimeric contigs and conserved shared regions are baked in.
@@ -65,9 +64,8 @@ structure but sample the transcriptome shallowly; the genome-guided short-read a
 loci the long reads did not reach; de novo assembly finds loci absent from a draft genome.
 The ladder measures what each one was worth instead of hiding it in one merge.
 
----
 
-## 2. Inputs
+## 2. Input
 
 ### Short reads — `--samplesheet`
 
@@ -148,7 +146,6 @@ UVAUVB_vs_UVB,condition,UVAUVB,UVB
 `--design` is the DESeq2 formula (`~ condition`, `~ batch + condition`, …), `--reference_level`
 the baseline. Without a contrasts file, every level is tested against the reference level.
 
----
 
 ## 3. Output
 
@@ -223,7 +220,7 @@ bin/build_dashboard.py --dir <a directory of pipeline outputs> \
 
 `--skip_dashboard` turns it off; `--dashboard_title` sets the heading.
 
----
+
 
 ## 4. Configuration
 

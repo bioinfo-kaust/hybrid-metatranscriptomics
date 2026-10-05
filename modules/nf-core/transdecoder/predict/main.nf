@@ -31,12 +31,15 @@ process TRANSDECODER_PREDICT {
     # private, writable directory of symlinks instead. mv handles both staging modes: it moves a
     # symlink as a symlink, and renames a real directory in place, so nothing is deleted either way.
     # find avoids the dotglob/nullglob shell-option juggling that caused three earlier bugs here.
+    # ln -t names the directory explicitly: `ln -s FILE DIR/` first tries to create DIR/ itself and
+    # relies on the error code to fall back, which GPFS returns wrongly (ENOENT, not EEXIST). With
+    # `+`, a failing ln fails find, and so the task, instead of TransDecoder running on an empty dir.
     mv "$fold" "${fold}.staged"
     real_fold=\$(readlink -f "${fold}.staged")
     [ -d "\$real_fold" ] || { echo "TRANSDECODER_LONGORF's directory is missing: \$real_fold" >&2; exit 1; }
     [ -n "\$(ls -A "\$real_fold")" ] || { echo "TRANSDECODER_LONGORF produced an empty directory: \$real_fold" >&2; exit 1; }
     mkdir "$fold"
-    find "\$real_fold" -mindepth 1 -maxdepth 1 -exec ln -s {} "$fold"/ \\;
+    find "\$real_fold" -mindepth 1 -maxdepth 1 -exec ln -s -t "$fold" {} +
 
     TransDecoder.Predict \\
         $args \\

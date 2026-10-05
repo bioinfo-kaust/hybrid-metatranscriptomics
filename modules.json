@@ -123,7 +123,8 @@
                     "transdecoder/predict": {
                         "branch": "master",
                         "git_sha": "863a36f28b3c3c39b182be6f977799fb8de49598",
-                        "installed_by": ["modules"]
+                        "installed_by": ["modules"],
+                        "patch": "modules/nf-core/transdecoder/predict/transdecoder-predict.diff"
                     },
                     "trinity": {
                         "branch": "master",

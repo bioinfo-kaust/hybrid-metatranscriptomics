@@ -38,12 +38,20 @@ nextflow run . -profile hpc,envmodules \
 nextflow run . -profile test -stub-run
 ```
 
-**Required:** `--samplesheet`, `--genome` or `--genome_accession`, `--eggnog_data_dir` (or
-`--skip_eggnog`) and `--outdir`. **Set for your experiment:** the genomes whose reads are removed
-before assembly (`--contaminant_accessions`, `--contaminant_fasta` or `--contaminant_dir`), and
-`--longread_samplesheet` (or `--skip_longread`), `--contrasts` and `--busco_lineage`, whose
-defaults are the Cassiopea run's example sheets and lineage. `--reference_level` defaults to the
-first level alphabetically.
+**Required:** `--samplesheet`, `--eggnog_data_dir` (or `--skip_eggnog`) and `--outdir`.
+**Set for your experiment:** the host genome (`--genome` or `--genome_accession`), the genomes
+whose reads are removed before assembly (`--contaminant_accessions`, `--contaminant_fasta` or
+`--contaminant_dir`), and `--longread_samplesheet` (or `--skip_longread`), `--contrasts` and
+`--busco_lineage`, whose defaults are the Cassiopea run's example sheets and lineage.
+`--reference_level` defaults to the first level alphabetically.
+
+**Optional inputs.** With no contaminant genomes, decontamination is skipped. With no host genome,
+the steps that place sequence on it are skipped — the genome-guided long-read route, StringTie,
+SQANTI3 and the locus gene map (`--dge_primary_map locus` falls back to `string`) — the reference
+is built from Trinity and the reference-free long reads, salmon indexes without decoys, and
+decontamination removes every read that places on a contaminant (there is no host alignment to
+win a conserved region back, so it is stricter than with a genome). The run warns at start-up
+about whatever it switched off, and the dashboard reports the steps as skipped.
 
 **On SLURM**, `run_slurm.sh` is a small driver job that launches Nextflow and waits, so a long run
 outlives an interactive session's wall limit. It reads `PROJ`, `PARAMS_FILE`, `SITE_CONFIG` and
@@ -125,8 +133,8 @@ Every reference is either a path you give or something the pipeline downloads.
 
 | What | Give a path | …or let it download |
 |---|---|---|
-| Reference genome | `--genome` | `--genome_accession` (NCBI `datasets`) |
-| Contaminant genomes | `--contaminant_fasta` or `--contaminant_dir` (a folder of FASTAs, concatenated) | `--contaminant_accessions` (comma-separated) |
+| Reference genome (optional) | `--genome` | `--genome_accession` (NCBI `datasets`) |
+| Contaminant genomes (optional) | `--contaminant_fasta` or `--contaminant_dir` (a folder of FASTAs, concatenated) | `--contaminant_accessions` (comma-separated) |
 | rRNA database | `--rrna_fasta` | default: the SortMeRNA v4.3 set (`--rrna_db_sets`) |
 | Protein DBs | `--diamond_db_dir` (a folder of `.dmnd`) | `--swissprot_url` + `--specialist_url` |
 | STAR index | `--star_index` | built from the genome |

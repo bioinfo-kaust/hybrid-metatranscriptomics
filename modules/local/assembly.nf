@@ -175,8 +175,11 @@ process NOVEL_VS_REF {
 
     script:
     def args = task.ext.args ?: '-x asm20 -c --secondary=no'
+    // no reference yet (no genome-guided base): every query sequence is novel
+    def align = reference.name == 'NO_FILE_REF' ? ': > q_vs_ref.paf'
+              : "minimap2 ${args} -t ${task.cpus} ${reference} ${query} > q_vs_ref.paf 2> minimap2.log"
     """
-    minimap2 ${args} -t ${task.cpus} ${reference} ${query} > q_vs_ref.paf 2> minimap2.log
+    ${align}
 
     # PAF: 1 qname 2 qlen 3 qstart 4 qend .. 10 matching bases 11 alignment length
     awk -v cov=${params.novelty_min_cov} -v idt=${identity} \\

@@ -17,10 +17,12 @@ process SALMON_INDEX {
 
     script:
     def args = task.ext.args ?: '-k 31'
+    // no genome = no decoys: the index is the transcripts alone
+    def decoy_arg = genome.name == 'NO_FILE_GENOME' ? '' : '-d decoys.txt'
     """
-    grep '^>' ${genome} | sed 's/^>//; s/ .*//' > decoys.txt
+    grep '^>' ${genome} | sed 's/^>//; s/ .*//' > decoys.txt || true
     cat ${fasta} ${genome} > gentrome.fa
-    salmon index -t gentrome.fa -d decoys.txt -i salmon_index ${args} -p ${task.cpus}
+    salmon index -t gentrome.fa ${decoy_arg} -i salmon_index ${args} -p ${task.cpus}
     rm -f gentrome.fa
     echo "[${label}] salmon index over \$(grep -c '^>' ${fasta}) transcripts + \$(wc -l < decoys.txt) decoys"
     emit_versions.sh "${task.process}" salmon

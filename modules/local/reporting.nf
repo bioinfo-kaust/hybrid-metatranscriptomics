@@ -177,7 +177,7 @@ process RUN_SUMMARY {
 
     script:
     """
-    run_summary.py --dir in --out run_summary.txt --primary-map ${params.dge_primary_map}
+    run_summary.py --dir in --out run_summary.txt --primary-map ${Inputs.primaryMap(params)}
     cat run_summary.txt
     emit_versions.sh "${task.process}" python3
     """

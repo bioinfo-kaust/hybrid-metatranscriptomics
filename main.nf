@@ -51,9 +51,12 @@ def helpMessage() {
       --samplesheet            CSV: sample,condition,replicate,fastq_1,fastq_2 (one row per lane)
       --longread_samplesheet   CSV: sample,condition,reads   (null disables the long-read side)
       --assembly_samplesheet   CSV like --samplesheet: extra libraries used only to assemble
-      --genome | --genome_accession           reference genome (local FASTA or NCBI accession)
+      --genome | --genome_accession           reference genome (local FASTA or NCBI accession);
+                                              optional: without it the genome-guided routes,
+                                              SQANTI3 and the locus gene map are skipped
       --contaminant_fasta | --contaminant_dir | --contaminant_accessions
-                                              genomes whose reads are removed before assembly
+                                              genomes whose reads are removed before assembly;
+                                              optional: none given = no decontamination
       --outdir                 results directory
 
     Design
@@ -74,6 +77,35 @@ def helpMessage() {
 }
 
 if (params.help) { helpMessage(); exit 0 }
+
+// ---------------------------------------------------------------- optional inputs
+// A missing genome or contaminant set switches its steps off; say so up front rather than let
+// the run finish without them (see lib/Inputs.groovy).
+if (!Inputs.hasContaminants(params) && !params.skip_decontam)
+    log.warn "No contaminant genomes given: contaminant removal is skipped."
+if (!Inputs.hasGenome(params)) {
+    log.warn "No genome given: skipping the genome-guided long-read route, StringTie, SQANTI3 and the " +
+             "locus gene map${params.dge_primary_map == 'locus' ? " (primary map falls back to 'string')" : ''}; " +
+             "salmon runs without decoys." +
+             (Inputs.decontam(params) ? " Decontamination removes every read that places on a contaminant." : '')
+}
+def has_long = Inputs.longReads(params)
+if (!(has_long && Inputs.genomeGuided(params)) && !Inputs.stringtie(params)
+        && params.skip_denovo && !(has_long && !params.skip_reffree))
+    error "No assembly route left to build a transcriptome from: give a --genome, a long-read " +
+          "samplesheet, or leave Trinity on (--skip_denovo false)."
+
+// corset has no environment module: without conda it must come from --corset_bin, --extra_path or
+// the PATH. Look now, not when CORSET fails hours into the run.
+if (!params.skip_corset && !params.use_conda_pkgs && !workflow.stubRun) {
+    def dirs = [Inputs.unset(params.corset_bin), Inputs.unset(params.extra_path)].findAll() +
+               (System.getenv('PATH') ?: '').tokenize(File.pathSeparator)
+    if (Inputs.unset(params.corset_bin) && !file("${params.corset_bin}/corset").exists())
+        error "--corset_bin ${params.corset_bin} has no 'corset' executable."
+    if (!dirs.any { d -> file("${d}/corset").exists() })
+        error "corset not found (no environment module provides it): set --corset_bin to the " +
+              "directory holding it, use -profile conda, or run with --skip_corset."
+}
 
 // ---------------------------------------------------------------- samplesheet parsing
 def parse_short_samplesheet(path) {
@@ -120,7 +152,9 @@ def parse_long_samplesheet(path) {
  * arguments each stage really ran with instead of a hard-coded description of the pipeline.
  */
 def write_run_manifest() {
-    def safe = params.collectEntries { k, v ->
+    // the effective values, not the requested ones: a step switched off by a missing input
+    // must read as off in the reports
+    def safe = (params + Inputs.effective(params)).collectEntries { k, v ->
         [(k): (v == null || v instanceof Boolean || v instanceof Number || v instanceof Map || v instanceof List)
               ? v : v.toString()]
     }
@@ -165,7 +199,7 @@ workflow {
     // One combined index: each read's primary alignment is its best placement genome-wide, so a
     // conserved host read that also aligns to a contaminant is still kept.
     ch_decon_index = Channel.empty()
-    if (!params.skip_decontam) {
+    if (Inputs.decontam(params)) {
         BUILD_DECON_INDEX(PREPARE_REFERENCES.out.genome, PREPARE_REFERENCES.out.contaminant)
         // both inputs are value channels, so the index is one too and fans out to every sample
         ch_decon_index = BUILD_DECON_INDEX.out.index
@@ -192,7 +226,7 @@ workflow {
     }
 
     ch_long = Channel.empty()
-    if (!params.skip_longread && params.longread_samplesheet) {
+    if (Inputs.longReads(params)) {
         LONG_READ_PREPROCESS(parse_long_samplesheet(params.longread_samplesheet),
                              PREPARE_REFERENCES.out.rrna,
                              PREPARE_REFERENCES.out.genome,
@@ -243,7 +277,7 @@ workflow {
     AGGREGATE_TSV(ch_tables)
     ch_qc_tables = AGGREGATE_TSV.out.table.map { name, f -> f }.collect()
 
-    if (!params.skip_decontam) {
+    if (Inputs.decontam(params)) {
         DECONTAM_MQC(AGGREGATE_TSV.out.table.filter { n, f -> n == 'decontam_per_sample' }.map { n, f -> f })
         ch_qc = ch_qc.mix(DECONTAM_MQC.out.mqc)
     }
@@ -303,7 +337,7 @@ workflow {
         DASHBOARD(
             ch_report_inputs
                 .mix(BUILD_TRANSCRIPTOME.out.busco.map { l, f -> f }.ifEmpty([]))
-                .mix(params.skip_decontam ? Channel.empty() : BUILD_DECON_INDEX.out.log)
+                .mix(Inputs.decontam(params) ? BUILD_DECON_INDEX.out.log : Channel.empty())
                 .mix(ch_annotation.map { l, f -> f }.ifEmpty([]))
                 .mix(QUANTIFY_AND_DGE.out.enrichment.map { l, d -> d }.ifEmpty([]))
                 .mix(QUANTIFY_AND_DGE.out.enrich_corset.map { l, d -> d }.ifEmpty([]))

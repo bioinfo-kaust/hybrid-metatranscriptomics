@@ -16,6 +16,10 @@
  * what is in it rather than when it was made. The expression filter derives one more rung,
  * all_sources_dedup_expressed, which is the set actually quantified and tested.
  *
+ * Without a genome there is no Route A or StringTie, so the isoseq_stringtie rung is empty: the
+ * de novo and reference-free sets are then novel against nothing, and the later rungs hold only
+ * them. The names stay the same so dge_reference and the reports need no special case.
+ *
  * The lean set exists because the other rungs count one biological locus several times when
  * several sources recover it. Deduplication reduces that; it does not eliminate it, which is
  * what the locus rebuild in stage 6 addresses.
@@ -72,10 +76,12 @@ workflow BUILD_TRANSCRIPTOME {
     ch_counts = Channel.empty()      // audit reports
     ch_qc     = Channel.empty()
 
-    def do_long   = !params.skip_longread
-    def do_routea = do_long && !params.skip_genome_guided
+    def do_long   = Inputs.longReads(params)
+    def do_routea = do_long && Inputs.genomeGuided(params)
     def do_routeb = do_long && !params.skip_reffree
-    def audit     = !params.skip_decontam
+    def do_st     = Inputs.stringtie(params)
+    def has_base  = do_routea || do_st     // anything for the later routes to be novel against
+    def audit     = Inputs.decontam(params)
 
     // ---------------------------------------------------- Route A: long reads on the genome
     ch_collapsed_gff = Channel.fromPath("${projectDir}/assets/NO_FILE_GFF", checkIfExists: false)
@@ -113,7 +119,7 @@ workflow BUILD_TRANSCRIPTOME {
 
     // ------------------------------------------ Route C: genome-guided short-read assembly
     ch_isoseq_stringtie = ch_base
-    if (!params.skip_stringtie) {
+    if (do_st) {
         STAR_ALIGN(ch_reads, ch_star_index)
         STRINGTIE(STAR_ALIGN.out.bam)
         ch_qc = ch_qc.mix(STAR_ALIGN.out.log)
@@ -133,11 +139,15 @@ workflow BUILD_TRANSCRIPTOME {
     // Structural QC of the long-read models against an independent short-read annotation.
     // Reports only — the categories say which collapse products a second assembly supports.
     ch_sqanti = Channel.empty()
-    if (do_routea && !params.skip_stringtie && !params.skip_sqanti) {
+    if (do_routea && do_st && Inputs.sqanti(params)) {
         SQANTI3_QC(ch_collapsed_gtf.map { gtf -> tuple('isoseq', gtf) },
                    STRINGTIE_MERGE.out.merged_gtf, ch_genome)
         ch_sqanti = SQANTI3_QC.out.summary
     }
+
+    // what the de novo and reference-free sets are compared against
+    ch_novelty_ref = has_base ? ch_isoseq_stringtie
+                              : Channel.value(tuple('none', file("${projectDir}/assets/NO_FILE_REF")))
 
     // -------------------------------------------------- Route D: de novo short-read assembly
     ch_denovo_novel = Channel.empty()
@@ -153,7 +163,7 @@ workflow BUILD_TRANSCRIPTOME {
         }
         // collapse the assembler's own isoform redundancy, then keep only what the base lacks
         CLUSTER_DENOVO(ch_trin, params.cdhit_dedup_id)
-        NOVEL_DENOVO(CLUSTER_DENOVO.out.fasta, ch_isoseq_stringtie, params.cdhit_dedup_id, params.prefix_denovo)
+        NOVEL_DENOVO(CLUSTER_DENOVO.out.fasta, ch_novelty_ref, params.cdhit_dedup_id, params.prefix_denovo)
         ch_denovo_novel = NOVEL_DENOVO.out.fasta.map { l, fa -> fa }
     }
 
@@ -172,24 +182,26 @@ workflow BUILD_TRANSCRIPTOME {
         ch_lrfree_nr = CLUSTER_LRFREE_NR.out.fasta
 
         // (a) what Route B adds to the base, on its own
-        NOVEL_LRFREE_A(ch_lrfree_nr, ch_isoseq_stringtie, params.cdhit_dedup_id, params.prefix_lrfree)
+        NOVEL_LRFREE_A(ch_lrfree_nr, ch_novelty_ref, params.cdhit_dedup_id, params.prefix_lrfree)
         ch_lrfree_novel_vs_base = NOVEL_LRFREE_A.out.fasta.map { l, fa -> fa }
     }
 
     // ---------------------------------------------------------------- ladder assembly
     ch_with_trinity = Channel.empty()
     if (!params.skip_denovo) {
-        ch_with_trinity = MERGE_WITH_TRINITY(
-            ch_isoseq_stringtie.map { l, fa -> fa }.combine(ch_denovo_novel)
-                      .map { base, novel -> tuple('isoseq_stringtie_trinity', [base, novel]) }).fasta
+        ch_with_trinity = MERGE_WITH_TRINITY(has_base
+            ? ch_isoseq_stringtie.map { l, fa -> fa }.combine(ch_denovo_novel)
+                      .map { base, novel -> tuple('isoseq_stringtie_trinity', [base, novel]) }
+            : ch_denovo_novel.map { novel -> tuple('isoseq_stringtie_trinity', [novel]) }).fasta
         ch_sets = ch_sets.mix(ch_with_trinity)
     }
 
     ch_with_lrfree = Channel.empty()
     if (do_routeb) {
-        ch_with_lrfree = MERGE_WITH_LRFREE(
-            ch_isoseq_stringtie.map { l, fa -> fa }.combine(ch_lrfree_novel_vs_base)
-                      .map { base, novel -> tuple('isoseq_stringtie_lrfree', [base, novel]) }).fasta
+        ch_with_lrfree = MERGE_WITH_LRFREE(has_base
+            ? ch_isoseq_stringtie.map { l, fa -> fa }.combine(ch_lrfree_novel_vs_base)
+                      .map { base, novel -> tuple('isoseq_stringtie_lrfree', [base, novel]) }
+            : ch_lrfree_novel_vs_base.map { novel -> tuple('isoseq_stringtie_lrfree', [novel]) }).fasta
         ch_sets = ch_sets.mix(ch_with_lrfree)
     }
 

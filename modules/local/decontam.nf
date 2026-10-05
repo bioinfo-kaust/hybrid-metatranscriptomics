@@ -6,6 +6,10 @@
  * contaminant still scores best on the host and is kept; only a positive contaminant placement
  * removes a pair. Reads that align nowhere are kept — on a fragmented draft genome,
  * unmapped is not evidence of contamination.
+ *
+ * Without a genome (genome input = the NO_FILE_GENOME placeholder) the index holds only the
+ * contaminants and the host alignments are empty, so ANY placement on a contaminant removes the
+ * read. There is no host to win a conserved region back; that is the price of running genome-free.
  */
 
 process BUILD_DECON_INDEX {
@@ -22,8 +26,9 @@ process BUILD_DECON_INDEX {
     path "versions.yml", emit: versions, topic: versions
 
     script:
+    def copy_host = genome.name == 'NO_FILE_GENOME' ? ': > host_plus_contam.fna' : "cp ${genome} host_plus_contam.fna"
     """
-    cp ${genome} host_plus_contam.fna
+    ${copy_host}
     awk '/^>/{sub(/^>/,">${params.contaminant_prefix}"); print; next}{print}' ${contaminants} >> host_plus_contam.fna
     {
       echo "scaffolds total:       \$(grep -c '^>' host_plus_contam.fna)"
@@ -124,8 +129,11 @@ process DECONTAM_LONG {
     def drop_ambiguous = params.keep_ambiguous_long ? '' : "${label}.ambiguous.ids"
     def keep_amb  = params.keep_ambiguous_long ? '--keep-ambiguous' : ''
     def cond_arg  = conditions.name != 'NO_FILE_COND' ? "--conditions ${conditions}" : ''
+    // no genome: an empty host PAF, so every contaminant placement classifies as 'contaminant'
+    def host_aln  = genome.name == 'NO_FILE_GENOME' ? ': > vs_host.paf'
+                  : "minimap2 -x splice -t ${task.cpus} --secondary=no ${genome} ${seqs} > vs_host.paf 2> vs_host.log"
     """
-    minimap2 -x splice -t ${task.cpus} --secondary=no ${genome}       ${seqs} > vs_host.paf   2> vs_host.log
+    ${host_aln}
     minimap2 -x splice -t ${task.cpus} --secondary=no ${contaminants} ${seqs} > vs_contam.paf 2> vs_contam.log
 
     classify_host_contaminant.py vs_host.paf vs_contam.paf ${label} ${params.contaminant_margin}
@@ -193,8 +201,10 @@ process CLASSIFY_CONTAM {
     path "versions.yml", emit: versions, topic: versions
 
     script:
+    def host_aln = genome.name == 'NO_FILE_GENOME' ? ': > vs_host.paf'
+                 : "minimap2 -x splice -t ${task.cpus} --secondary=no ${genome} ${fasta} > vs_host.paf 2> vs_host.log"
     """
-    minimap2 -x splice -t ${task.cpus} --secondary=no ${genome}       ${fasta} > vs_host.paf   2> vs_host.log
+    ${host_aln}
     minimap2 -x splice -t ${task.cpus} --secondary=no ${contaminants} ${fasta} > vs_contam.paf 2> vs_contam.log
     classify_host_contaminant.py vs_host.paf vs_contam.paf ${label} ${params.contaminant_margin}
 

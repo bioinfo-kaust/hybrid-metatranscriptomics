@@ -132,7 +132,7 @@ workflow QUANTIFY_AND_DGE {
     ch_locus_report = Channel.empty()
     ch_dge_locus    = Channel.empty()
     ch_enr_locus    = Channel.empty()
-    if (params.run_locus_rebuild && !params.skip_annotation) {
+    if (Inputs.locusRebuild(params)) {
         LOCUS_TX2GENE(ch_ref_fasta, ch_genome, ch_ref_tx2gene, ch_ref_ann)
         ch_locus_report = LOCUS_TX2GENE.out.report
         ch_gene_map_files = ch_gene_map_files.mix(LOCUS_TX2GENE.out.tx2gene.map { l, f -> f })

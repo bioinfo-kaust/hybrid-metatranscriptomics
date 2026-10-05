@@ -56,7 +56,7 @@ workflow SHORT_READ_PREPROCESS {
     ch_qc = ch_qc.mix(FASTQC.out.report)
 
     ch_decontam_tsv = Channel.empty()
-    if (!params.skip_decontam) {
+    if (Inputs.decontam(params)) {
         DECONTAM_SHORT(ch_reads, ch_decon_index)
         ch_reads = DECONTAM_SHORT.out.reads
         ch_decontam_tsv = DECONTAM_SHORT.out.summary.collect().map { t -> tuple('decontam_per_sample', t) }
@@ -112,7 +112,7 @@ workflow LONG_READ_PREPROCESS {
     ch_pooled = LONGREAD_POOL(ch_seqs.map { meta, seqs -> seqs }.collect()).seqs
                               .map { fa -> tuple('longreads', fa) }
 
-    if (!params.skip_decontam) {
+    if (Inputs.decontam(params)) {
         DECONTAM_LONG(ch_pooled, ch_genome, ch_contaminant, ch_membership, ch_rrna_hits, ch_conditions)
         ch_pooled = DECONTAM_LONG.out.seqs
         ch_tables = ch_tables

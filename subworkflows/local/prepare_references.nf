@@ -27,19 +27,23 @@ workflow PREPARE_REFERENCES {
     } else if (unset(params.genome_accession)) {
         ch_genome = DOWNLOAD_GENOME(params.genome_accession, params.genome_name).fasta.first()
     } else {
-        error "Provide --genome (a FASTA) or --genome_accession (downloaded with `datasets`)."
+        // No genome: the genome-guided steps are off (see Inputs) and the steps that can run
+        // without one see this empty placeholder — decontamination then removes whatever places
+        // on a contaminant, and salmon indexes without decoys.
+        ch_genome = Channel.value(file("${projectDir}/assets/NO_FILE_GENOME"))
     }
 
     // ------------------------------------------------------- contaminant genomes
     // Any one of: a combined FASTA, a directory of FASTAs, or a list of NCBI accessions.
-    if (unset(params.contaminant_fasta)) {
+    // None of them = no decontamination; with --skip_decontam they are not fetched either.
+    if (!Inputs.decontam(params)) {
+        ch_contam = Channel.empty()
+    } else if (unset(params.contaminant_fasta)) {
         ch_contam = Channel.fromPath(params.contaminant_fasta, checkIfExists: true).first()
     } else if (unset(params.contaminant_dir)) {
         ch_contam = COMBINE_CONTAMINANTS(Channel.fromPath(params.contaminant_dir, checkIfExists: true)).fasta.first()
     } else if (unset(params.contaminant_accessions)) {
         ch_contam = DOWNLOAD_CONTAMINANT_GENOMES(unset(params.contaminant_accessions)).fasta.first()
-    } else {
-        ch_contam = Channel.empty()
     }
 
     // ------------------------------------------------------------- rRNA database
@@ -52,7 +56,7 @@ workflow PREPARE_REFERENCES {
     }
 
     // --------------------------------------------------------------- STAR index
-    if (params.skip_stringtie) {
+    if (!Inputs.stringtie(params)) {
         ch_star = Channel.empty()
     } else if (unset(params.star_index)) {
         ch_star = Channel.fromPath(params.star_index, checkIfExists: true).first()

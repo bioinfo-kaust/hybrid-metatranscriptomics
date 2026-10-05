@@ -55,8 +55,8 @@ process SALMON_QUANT {
         --geneMap ${gtf} \\
         --threads ${task.cpus} \\
         ${reference} \\
-        ${input_reads} \\
         ${args} \\
+        ${input_reads} \\
         -o ${prefix}
 
     if [ -f ${prefix}/aux_info/meta_info.json ]; then

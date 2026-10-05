@@ -1,0 +1,21 @@
+Changes in component 'nf-core/salmon/quant'
+'modules/nf-core/salmon/quant/meta.yml' is unchanged
+Changes in 'salmon/quant/main.nf':
+--- modules/nf-core/salmon/quant/main.nf
++++ modules/nf-core/salmon/quant/main.nf
+@@ -55,8 +55,8 @@
+         --geneMap ${gtf} \\
+         --threads ${task.cpus} \\
+         ${reference} \\
++        ${args} \\
+         ${input_reads} \\
+-        ${args} \\
+         -o ${prefix}
+ 
+     if [ -f ${prefix}/aux_info/meta_info.json ]; then
+
+'modules/nf-core/salmon/quant/environment.yml' is unchanged
+'modules/nf-core/salmon/quant/tests/main.nf.test' is unchanged
+'modules/nf-core/salmon/quant/tests/main.nf.test.snap' is unchanged
+'modules/nf-core/salmon/quant/tests/nextflow_ext_args_libtype.config' is unchanged
+************************************************************

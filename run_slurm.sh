@@ -16,7 +16,7 @@
 #   PROJ         project directory holding nextflow/ (this repo), nextflow_work/ and logs/
 #   PARAMS_FILE  the run's params file (required)
 #   SITE_CONFIG  optional config with site paths and the account, if kept out of PARAMS_FILE
-#   NF_PROFILE   default: hpc,envmodules
+#   NF_PROFILE   default: hpc,envmodules (hpc,singularity to run the published containers)
 # Pass the account and log paths to sbatch, e.g.
 #   PROJ=/path/to/project PARAMS_FILE=my_params.yml sbatch --account=<alloc> --output=<logs>/nf_driver.%j.out \
 #       --error=<logs>/nf_driver.%j.err run_slurm.sh [-resume <session-id>] [-c overlay.config]
@@ -37,7 +37,8 @@ cd "$PROJ/nextflow"
 STAMP="${SLURM_JOB_ID:-$(date +%Y%m%d-%H%M%S)}"
 REPORTS="$PROJ/logs/slurm/nf_run.${STAMP}"
 
-module load nextflow 2>/dev/null || true
+# the manifest requires Nextflow >= 25.10.4 (nextflowVersion in nextflow.config)
+module load nextflow/25.10.4 2>/dev/null || module load nextflow 2>/dev/null || true
 
 # Keep the driver's own scratch off the shared filesystem's metadata hot path, and let a task
 # that loses its node be retried rather than taking the run down with it.

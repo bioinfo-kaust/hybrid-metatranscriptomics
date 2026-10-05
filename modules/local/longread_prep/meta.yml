@@ -1,0 +1,36 @@
+name: "longread_prep"
+description: "Long reads arrive as FASTA or FASTQ (optionally gzipped) and may carry characters that break downstream tools' shell handling (the project's own HQ file is named \"...transcripts(1).fasta\")."
+keywords:
+  - longread
+  - prep
+  - transcriptomics
+tools:
+  - "seqkit":
+      description: "seqkit"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - - "meta":
+          type: map
+          description: "meta"
+    - "reads":
+          type: file
+          description: "reads"
+output:
+  seqs:
+    - - "meta":
+            type: map
+            description: "meta"
+      - "${meta.id}.fasta":
+            type: file
+            description: "${meta.id}.fasta"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

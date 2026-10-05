@@ -1,0 +1,814 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://raw.githubusercontent.com/bioinfo-kaust/hybrid-metatranscriptomics/main/nextflow_schema.json",
+    "title": "bioinfo-kaust/hybrid-metatranscriptomics pipeline parameters",
+    "description": "Host-only transcriptome reconstruction from long + short reads with pre-assembly decontamination, annotation, quantification and DGE",
+    "type": "object",
+    "$defs": {
+        "input_output_options": {
+            "title": "Input/output options",
+            "type": "object",
+            "fa_icon": "fas fa-terminal",
+            "description": "Samplesheets and the output directory.",
+            "properties": {
+                "input": {
+                    "type": "string",
+                    "description": "Sample,condition,replicate,fastq_1,fastq_2  (>1 row per sample = lanes, merged).",
+                    "format": "file-path",
+                    "exists": true,
+                    "mimetype": "text/csv",
+                    "pattern": "^\\S+\\.csv$",
+                    "schema": "assets/schema_input.json"
+                },
+                "longread_input": {
+                    "type": "string",
+                    "description": "Sample,condition,reads (fasta/fastq[.gz]); null disables the long-read side.",
+                    "format": "file-path",
+                    "mimetype": "text/csv",
+                    "help_text": "Validated against assets/schema_longread.json when the run starts; `null` (or leaving it unset) disables it."
+                },
+                "longread_membership": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "Long reads that were pooled before the pipeline saw them (a polished Iso-Seq set, say) carry no per-sample identity.",
+                    "help_text": "Long reads that were pooled before the pipeline saw them (a polished Iso-Seq set, say) carry no per-sample identity. Point this at a 'sequence_id<TAB>sample' table to recover it \u2014 extra/pacbio_fl_counts_to_membership.py builds one from a PacBio FL count matrix."
+                },
+                "assembly_input": {
+                    "type": "string",
+                    "description": "Extra short-read libraries used ONLY to assemble the reference (StringTie + Trinity): same preprocessing as --input, never quantified or tested.",
+                    "help_text": "Extra short-read libraries used ONLY to assemble the reference (StringTie + Trinity): same preprocessing as --input, never quantified or tested. For public libraries of the same species that assemble better than the experiment's own. Same columns as `input`; the condition column may be empty. Their strandedness must match `strandedness`. null = none. Validated against assets/schema_input.json when the run starts; `null` (or leaving it unset) disables it.",
+                    "format": "file-path",
+                    "mimetype": "text/csv"
+                }
+            },
+            "required": [
+                "input",
+                "outdir"
+            ]
+        },
+        "reference_genome_options": {
+            "title": "Reference genome",
+            "type": "object",
+            "fa_icon": "fas fa-dna",
+            "description": "Optional host genome: enables the genome-guided routes, salmon decoys and the locus gene map.",
+            "properties": {
+                "genome": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "Give a local FASTA, or an NCBI accession to download with `datasets`.",
+                    "help_text": "Give a local FASTA, or an NCBI accession to download with `datasets`. Optional: with neither, the genome-guided routes, SQANTI3 and the locus gene map are skipped, salmon runs without decoys, and decontamination removes every read that places on a contaminant."
+                },
+                "genome_accession": {
+                    "type": "string",
+                    "description": "Genome accession."
+                },
+                "genome_name": {
+                    "type": "string",
+                    "default": "host_genome",
+                    "description": "Genome name."
+                },
+                "star_index": {
+                    "type": "string",
+                    "format": "directory-path",
+                    "description": "Prebuilt STAR index dir; built when null."
+                }
+            }
+        },
+        "contaminant_options": {
+            "title": "Contaminant / symbiont set",
+            "type": "object",
+            "fa_icon": "fas fa-filter",
+            "description": "Genomes whose reads are removed before assembly. All null = no decontamination.",
+            "properties": {
+                "contaminant_fasta": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "Genomes whose reads must be removed BEFORE assembly.",
+                    "help_text": "Genomes whose reads must be removed BEFORE assembly. Any one of: contaminant_fasta       - a single (already combined) FASTA contaminant_dir         - a directory of FASTA files, concatenated by the pipeline contaminant_accessions  - comma-separated NCBI accessions, downloaded and concatenated All three null = decontamination is skipped (same as --skip_decontam)."
+                },
+                "contaminant_dir": {
+                    "type": "string",
+                    "format": "directory-path",
+                    "description": "Contaminant dir."
+                },
+                "contaminant_accessions": {
+                    "type": "string",
+                    "description": "Contaminant accessions."
+                },
+                "contaminant_prefix": {
+                    "type": "string",
+                    "default": "CONTAM_",
+                    "description": "Scaffold-name prefix that marks contaminant sequence."
+                },
+                "contaminant_margin": {
+                    "type": "number",
+                    "default": 1.1,
+                    "description": "Best-residue-match margin for the long-read classifier."
+                },
+                "keep_ambiguous_long": {
+                    "type": "boolean",
+                    "description": "False = drop 'ambiguous' long reads (project behaviour)."
+                }
+            }
+        },
+        "rrna_options": {
+            "title": "rRNA removal",
+            "type": "object",
+            "fa_icon": "fas fa-filter",
+            "properties": {
+                "rrna_fasta": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "Local FASTA; downloaded from rrna_db_urls when null."
+                },
+                "rrna_db_base": {
+                    "type": "string",
+                    "default": "https://raw.githubusercontent.com/sortmerna/sortmerna/master/data/rRNA_databases",
+                    "description": "Base URL of the SortMeRNA rRNA databases."
+                },
+                "rrna_db_sets": {
+                    "type": "string",
+                    "default": "silva-arc-16s-id95,silva-arc-23s-id98,silva-bac-16s-id90,silva-bac-23s-id98,silva-euk-18s-id95,silva-euk-28s-id98,rfam-5s-database-id98,rfam-5.8s-database-id98",
+                    "description": "Comma-separated SortMeRNA rRNA database names to download from rrna_db_base."
+                },
+                "rrna_kmer": {
+                    "type": "integer",
+                    "default": 31,
+                    "description": "K-mer length for bbduk rRNA matching."
+                }
+            }
+        },
+        "annotation_options": {
+            "title": "Annotation",
+            "type": "object",
+            "fa_icon": "fas fa-tags",
+            "description": "Protein databases and annotation settings.",
+            "properties": {
+                "diamond_db_dir": {
+                    "type": "string",
+                    "format": "directory-path",
+                    "description": "Dir with prebuilt <name>.dmnd files; built when null."
+                },
+                "primary_protein_db": {
+                    "type": "string",
+                    "default": "uniprot_sprot",
+                    "description": "Which DIAMOND database supplies the generic protein_hit / protein_desc columns that the locus validation, the figures, the dashboard and the interest regex all key on.",
+                    "help_text": "Which DIAMOND database supplies the generic protein_hit / protein_desc columns that the locus validation, the figures, the dashboard and the interest regex all key on. Without this the integrator falls back to alphabetical order, which silently promoted the small specialist DB (toxprot, 1,021 hits) over Swiss-Prot (28,059)."
+                },
+                "swissprot_url": {
+                    "type": "string",
+                    "default": "https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/complete/uniprot_sprot.fasta.gz",
+                    "description": "URL of the Swiss-Prot FASTA used to build the primary DIAMOND database."
+                },
+                "specialist_name": {
+                    "type": "string",
+                    "default": "toxprot",
+                    "description": "Second (specialist) DIAMOND DB.",
+                    "help_text": "Second (specialist) DIAMOND DB. Default = UniProt Tox-Prot (reviewed animal toxins). Set specialist_url = null to run with Swiss-Prot only."
+                },
+                "specialist_url": {
+                    "type": "string",
+                    "default": "https://rest.uniprot.org/uniprotkb/stream?query=%28keyword%3AKW-0800%29%20AND%20%28reviewed%3Atrue%29&format=fasta&compressed=true",
+                    "description": "Specialist url."
+                },
+                "eggnog_data_dir": {
+                    "type": "string",
+                    "format": "directory-path",
+                    "description": "Required unless skip_eggnog."
+                },
+                "interproscan_appl": {
+                    "type": "string",
+                    "default": "Pfam,SMART,SUPERFAMILY,CDD,PRINTS",
+                    "description": "Interproscan appl."
+                },
+                "interproscan_db": {
+                    "type": "string",
+                    "format": "directory-path",
+                    "description": "InterProScan data/ directory; null = the installation's own."
+                },
+                "interest_regex": {
+                    "type": "string",
+                    "default": "photolyase|mycosporine|\\bMAA\\b|superoxide dismutase|catalase|peroxiredoxin|heat shock|HSP\\d|opsin|photorecept|DNA repair|nucleotide excision|thioredoxin|glutathione|\\bUV\\b|\\bUV-|ultraviolet|cryptochrome",
+                    "description": "Regex flagging a gene family of interest in the annotation table (column of_interest).",
+                    "help_text": "Regex flagging a gene family of interest in the annotation table (column of_interest). Word boundaries on the short tokens: a bare 'UV' matched as a substring collects \"pyruvate\" and \"recurvature\", and a bare 'MAA' collects any word containing it."
+                },
+                "interest_label": {
+                    "type": "string",
+                    "default": "UV_stress_family",
+                    "description": "Interest label."
+                }
+            }
+        },
+        "busco_options": {
+            "title": "BUSCO",
+            "type": "object",
+            "fa_icon": "fas fa-check",
+            "properties": {
+                "busco_lineage": {
+                    "type": "string",
+                    "default": "cnidaria_odb12",
+                    "description": "Busco lineage."
+                },
+                "busco_download_path": {
+                    "type": "string",
+                    "format": "directory-path",
+                    "description": "Reuse an existing BUSCO lineage cache."
+                },
+                "busco_mode": {
+                    "type": "string",
+                    "default": "transcriptome",
+                    "description": "Busco mode.",
+                    "enum": [
+                        "genome",
+                        "proteins",
+                        "transcriptome"
+                    ]
+                }
+            }
+        },
+        "design_options": {
+            "title": "Experimental design",
+            "type": "object",
+            "fa_icon": "fas fa-flask",
+            "properties": {
+                "condition_column": {
+                    "type": "string",
+                    "default": "condition",
+                    "description": "Condition column."
+                },
+                "reference_level": {
+                    "type": "string",
+                    "description": "E.g."
+                },
+                "design": {
+                    "type": "string",
+                    "default": "~ condition",
+                    "description": "Design."
+                },
+                "contrasts": {
+                    "type": "string",
+                    "description": "Id,factor,level,reference; null = every level vs reference_level. Default: assets/contrasts.csv in the pipeline directory.",
+                    "format": "file-path"
+                },
+                "strandedness": {
+                    "type": "string",
+                    "default": "reverse",
+                    "description": "Library strandedness: reverse, forward or unstranded.",
+                    "enum": [
+                        "reverse",
+                        "forward",
+                        "unstranded"
+                    ]
+                },
+                "strandedness_check": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Salmon detects the library type per sample with -l A; when true, a detection that disagrees with `strandedness` fails that sample instead of being printed and forgotten."
+                },
+                "min_mapping_rate": {
+                    "type": "number",
+                    "default": 70,
+                    "description": "Fail the run if any library maps below this percentage."
+                },
+                "random_seed": {
+                    "type": "integer",
+                    "default": 42,
+                    "description": "GSEA's multilevel algorithm is randomised; fix it."
+                }
+            }
+        },
+        "statistics_options": {
+            "title": "Statistics",
+            "type": "object",
+            "fa_icon": "fas fa-chart-bar",
+            "description": "Thresholds shared by DESeq2, enrichment and the figures.",
+            "properties": {
+                "de_min_count": {
+                    "type": "integer",
+                    "default": 5,
+                    "description": "A gene needs >= this many counts ."
+                },
+                "de_min_samples": {
+                    "type": "integer",
+                    "default": 3,
+                    "description": "."
+                },
+                "de_alpha": {
+                    "type": "number",
+                    "default": 0.05,
+                    "description": "Adjusted-p cutoff, everywhere."
+                },
+                "de_lfc": {
+                    "type": "number",
+                    "default": 1,
+                    "description": "|log2FC| cut applied when counting up/down."
+                },
+                "de_shrink": {
+                    "type": "string",
+                    "default": "apeglm",
+                    "description": "Apeglm | ashr | normal | none.",
+                    "enum": [
+                        "apeglm",
+                        "ashr",
+                        "normal",
+                        "none"
+                    ]
+                }
+            }
+        },
+        "assembly_options": {
+            "title": "Transcriptome assembly",
+            "type": "object",
+            "fa_icon": "fas fa-layer-group",
+            "description": "The A-D assembly ladder and its thresholds.",
+            "properties": {
+                "min_transcript_len": {
+                    "type": "integer",
+                    "default": 300,
+                    "description": "Minimum length of a novel transcript added to the reference."
+                },
+                "cdhit_longread_id": {
+                    "type": "number",
+                    "default": 0.99,
+                    "description": "Route B: collapse near-identical long-read isoforms."
+                },
+                "cdhit_dedup_id": {
+                    "type": "number",
+                    "default": 0.95,
+                    "description": "Cross-source dedup / de novo isoform collapse."
+                },
+                "cluster_min_cov": {
+                    "type": "number",
+                    "default": 0.9,
+                    "description": "Fraction of a sequence that must align to its representative."
+                },
+                "novelty_min_cov": {
+                    "type": "number",
+                    "default": 0.9,
+                    "description": "."
+                },
+                "stringtie_class_codes": {
+                    "type": "string",
+                    "default": "u|x|i|y",
+                    "description": "Gffcompare class codes kept as novel loci."
+                },
+                "longread_genome_sequence": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Route A sequences from the GENOME at the collapsed models' exon coordinates (gffread -w) instead of the Iso-Seq consensus.",
+                    "help_text": "Route A sequences from the GENOME at the collapsed models' exon coordinates (gffread -w) instead of the Iso-Seq consensus. The HQ consensus carries homopolymer indels (1.26 frameshifts/kb against the genome on this project) that break ORFs: the same models with genome bases scored CDS BUSCO 71.3% against 68.2%. Identical to SQANTI3's *_corrected.fasta. false keeps the consensus (a genome of a different strain/population than the reads, say)."
+                },
+                "dge_reference": {
+                    "type": "string",
+                    "default": "all_sources_dedup",
+                    "description": "Which ladder rung feeds quantification.",
+                    "help_text": "which ladder rung feeds quantification. Names read as the sources they contain, in the order they were layered: isoseq                           Iso-Seq models collapsed on the genome (route A) isoseq_stringtie                 + genome-guided short-read loci the long reads missed isoseq_stringtie_trinity         + de novo loci absent from the draft genome isoseq_stringtie_lrfree          + reference-free long-read loci, no Trinity isoseq_stringtie_trinity_lrfree  all four sources merged all_sources_dedup                after cross-source deduplication (vsearch, 95%) The expression filter then derives all_sources_dedup_expressed, which is what is tested.",
+                    "enum": [
+                        "isoseq",
+                        "isoseq_stringtie",
+                        "isoseq_stringtie_trinity",
+                        "isoseq_stringtie_lrfree",
+                        "isoseq_stringtie_trinity_lrfree",
+                        "all_sources_dedup"
+                    ]
+                },
+                "prefix_stringtie": {
+                    "type": "string",
+                    "default": "ST_",
+                    "description": "Genome-guided short-read assembly."
+                },
+                "prefix_denovo": {
+                    "type": "string",
+                    "default": "TR_",
+                    "description": "De novo short-read assembly."
+                },
+                "prefix_lrfree": {
+                    "type": "string",
+                    "default": "PBR_",
+                    "description": "Reference-free long-read set."
+                },
+                "tx2gene_rules": {
+                    "type": "string",
+                    "default": "TR_:_i[0-9]+$;PBR_:;:\\.[0-9]+$",
+                    "description": "Per-source transcript -> gene rules: 'prefix:isoform_suffix_regex', ';'-separated, first match wins, empty regex = no grouping (gene == transcript).",
+                    "help_text": "Per-source transcript -> gene rules: 'prefix:isoform_suffix_regex', ';'-separated, first match wins, empty regex = no grouping (gene == transcript). Used for the string-stripped tx2gene map; the locus rebuild below is the coordinate-based alternative."
+                }
+            }
+        },
+        "expression_filter_options": {
+            "title": "Expression filter",
+            "type": "object",
+            "fa_icon": "fas fa-filter",
+            "properties": {
+                "expr_filter_tpm": {
+                    "type": "number",
+                    "default": 1,
+                    "description": "TPM a transcript must reach ."
+                },
+                "expr_filter_samples": {
+                    "type": "integer",
+                    "default": 3,
+                    "description": "."
+                },
+                "expr_filter_rescue": {
+                    "type": "boolean",
+                    "description": "Second way in: an ORF *and* homology support (protein hit or InterPro domain).",
+                    "help_text": "Second way in: an ORF *and* homology support (protein hit or InterPro domain). OFF by default, because on this dataset it was measured to buy nothing that matters: DE genes gained ................. 0 (no rescued-only gene is significant in any map) mapping rate gained ............. +0.127 pts (92.14% -> 92.27%), uniform across all 15 libraries and all three groups, so it cannot shift a contrast BUSCO of the reported assembly .. irrelevant: completeness is reported on the unfiltered ladder tip (all_sources_dedup, C:72.1%), not on the DE reference Its only real effect is on the DE reference itself, and it makes it worse: 56,599 tx at C:72.1% S:45.5% D:26.6% with the rescue, versus 48,224 tx at C:70.6% S:48.2% D:22.4% without -- 48 more complete markers bought with 144 more duplicated ones. Expression-only gives the highest single-copy fraction of any reference in the ladder. The 8,375 transcripts it would add are not discarded: ANNOTATE runs upstream of this filter, so they keep their annotation in annotation.<dge_reference>.tsv (they carry 24% of the protein hits and 34% of the UV_stress_family calls), they are simply not quantified or tested. Needs annotation when enabled."
+                }
+            }
+        },
+        "gene_map_options": {
+            "title": "Gene maps",
+            "type": "object",
+            "fa_icon": "fas fa-project-diagram",
+            "properties": {
+                "dge_primary_map": {
+                    "type": "string",
+                    "default": "locus",
+                    "description": "String | locus | corset; the other two are still built and published as sensitivity arms.",
+                    "enum": [
+                        "string",
+                        "locus",
+                        "corset"
+                    ]
+                },
+                "run_locus_rebuild": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Run locus rebuild."
+                },
+                "locus_groupby": {
+                    "type": "string",
+                    "default": "junction",
+                    "description": "Junction | exon.",
+                    "enum": [
+                        "junction",
+                        "exon"
+                    ]
+                },
+                "locus_mincov": {
+                    "type": "number",
+                    "default": 0.9,
+                    "description": "Min fraction of a transcript that must align to the genome; matches cluster_min_cov / novelty_min_cov so one coverage rule decides \"this transcript is represented\" everywhere."
+                },
+                "locus_se_overlap": {
+                    "type": "number",
+                    "default": 0.5,
+                    "description": "Junction mode: single-exon attach threshold."
+                }
+            }
+        },
+        "step_options": {
+            "title": "Skip steps",
+            "type": "object",
+            "fa_icon": "fas fa-fast-forward",
+            "properties": {
+                "skip_fastp": {
+                    "type": "boolean",
+                    "description": "Skip fastp."
+                },
+                "skip_rrna": {
+                    "type": "boolean",
+                    "description": "Skip rrna."
+                },
+                "skip_decontam": {
+                    "type": "boolean",
+                    "description": "Skip decontam."
+                },
+                "skip_longread": {
+                    "type": "boolean",
+                    "description": "Skip longread."
+                },
+                "skip_genome_guided": {
+                    "type": "boolean",
+                    "description": "Route A (long reads on the genome)."
+                },
+                "skip_reffree": {
+                    "type": "boolean",
+                    "description": "Route B (reference-free long-read collapse)."
+                },
+                "skip_stringtie": {
+                    "type": "boolean",
+                    "description": "Genome-guided short-read assembly + merge."
+                },
+                "skip_denovo": {
+                    "type": "boolean",
+                    "description": "Trinity."
+                },
+                "skip_annotation": {
+                    "type": "boolean",
+                    "description": "Skip annotation."
+                },
+                "skip_eggnog": {
+                    "type": "boolean",
+                    "description": "Skip eggnog."
+                },
+                "skip_interproscan": {
+                    "type": "boolean",
+                    "description": "Skip interproscan."
+                },
+                "skip_dge": {
+                    "type": "boolean",
+                    "description": "Skip dge."
+                },
+                "skip_enrichment": {
+                    "type": "boolean",
+                    "description": "Skip enrichment."
+                },
+                "skip_dtu": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Differential isoform usage (see README caveat)."
+                },
+                "skip_busco": {
+                    "type": "boolean",
+                    "description": "Skip busco."
+                },
+                "skip_sqanti": {
+                    "type": "boolean",
+                    "description": "SQANTI3 structural QC of the long-read models."
+                },
+                "skip_corset": {
+                    "type": "boolean",
+                    "description": "Gene map from salmon equivalence classes."
+                },
+                "corset_use_groups": {
+                    "type": "boolean",
+                    "description": "True passes -g <condition>: circular for DE (gene splits use the tested labels)."
+                },
+                "skip_figures": {
+                    "type": "boolean",
+                    "description": "Skip figures."
+                },
+                "skip_multiqc": {
+                    "type": "boolean",
+                    "description": "Skip multiqc."
+                },
+                "skip_dashboard": {
+                    "type": "boolean",
+                    "description": "Skip dashboard."
+                },
+                "dashboard_title": {
+                    "type": "string",
+                    "description": "Heading on the dashboard; defaults to the reference set."
+                },
+                "save_decontaminated_reads": {
+                    "type": "boolean",
+                    "description": "Publish the host-only FASTQs (large)."
+                }
+            }
+        },
+        "environment_options": {
+            "title": "Environment modules",
+            "type": "object",
+            "fa_icon": "fas fa-cubes",
+            "description": "Provisioning without containers or conda (-profile envmodules).",
+            "properties": {
+                "use_modules": {
+                    "type": "boolean",
+                    "description": "-profile envmodules.",
+                    "hidden": true
+                },
+                "corset_bin": {
+                    "type": "string",
+                    "format": "directory-path",
+                    "description": "Corset has no environment module here; point this at a bin/ that provides it.",
+                    "hidden": true
+                },
+                "r_libs": {
+                    "type": "string",
+                    "format": "directory-path",
+                    "description": "Extra R library path (DESeq2, apeglm, clusterProfiler, ...) for -profile envmodules.",
+                    "help_text": "Extra R library path (DESeq2, apeglm, clusterProfiler, ...) for -profile envmodules. The bioconductor module has no apeglm, so without it shrinkage silently degrades to ashr. Never set it with containers: a host library would shadow the container's packages.",
+                    "hidden": true
+                },
+                "extra_path": {
+                    "type": "string",
+                    "description": "Prepended to PATH for TransDecoder, gffread (envmodules).",
+                    "hidden": true
+                }
+            }
+        },
+        "multiqc_options": {
+            "title": "MultiQC",
+            "type": "object",
+            "fa_icon": "fas fa-file-alt",
+            "properties": {
+                "multiqc_config": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "Multiqc config.",
+                    "hidden": true
+                },
+                "multiqc_title": {
+                    "type": "string",
+                    "description": "Multiqc title."
+                },
+                "multiqc_logo": {
+                    "type": "string",
+                    "description": "Multiqc logo.",
+                    "hidden": true
+                },
+                "max_multiqc_email_size": {
+                    "type": "string",
+                    "default": "25.MB",
+                    "description": "Max multiqc email size.",
+                    "hidden": true
+                },
+                "multiqc_methods_description": {
+                    "type": "string",
+                    "description": "Multiqc methods description.",
+                    "hidden": true
+                }
+            }
+        },
+        "generic_options": {
+            "title": "Generic options",
+            "type": "object",
+            "fa_icon": "fas fa-file-import",
+            "description": "Less common options for the pipeline, typically set in a config file.",
+            "properties": {
+                "outdir": {
+                    "type": "string",
+                    "description": "The output directory where the results will be saved.",
+                    "format": "directory-path"
+                },
+                "publish_dir_mode": {
+                    "type": "string",
+                    "default": "copy",
+                    "description": "Publish dir mode.",
+                    "enum": [
+                        "symlink",
+                        "rellink",
+                        "link",
+                        "copy",
+                        "copyNoFollow",
+                        "move"
+                    ],
+                    "hidden": true
+                },
+                "email": {
+                    "type": "string",
+                    "description": "Email."
+                },
+                "email_on_fail": {
+                    "type": "string",
+                    "description": "Email on fail.",
+                    "hidden": true
+                },
+                "plaintext_email": {
+                    "type": "boolean",
+                    "description": "Plaintext email.",
+                    "hidden": true
+                },
+                "monochrome_logs": {
+                    "type": "boolean",
+                    "description": "Monochrome logs.",
+                    "hidden": true
+                },
+                "help": {
+                    "type": "boolean",
+                    "description": "Help.",
+                    "hidden": true
+                },
+                "help_full": {
+                    "type": "boolean",
+                    "description": "Help full.",
+                    "hidden": true
+                },
+                "show_hidden": {
+                    "type": "boolean",
+                    "description": "Show hidden.",
+                    "hidden": true
+                },
+                "version": {
+                    "type": "boolean",
+                    "description": "Version.",
+                    "hidden": true
+                },
+                "pipelines_testdata_base_path": {
+                    "type": "string",
+                    "default": "https://raw.githubusercontent.com/nf-core/test-datasets/",
+                    "description": "Pipelines testdata base path.",
+                    "hidden": true
+                },
+                "trace_report_suffix": {
+                    "type": "string",
+                    "description": "Trace report suffix.",
+                    "hidden": true
+                },
+                "validate_params": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Validate params.",
+                    "hidden": true
+                }
+            }
+        },
+        "institutional_config_options": {
+            "title": "Institutional config options",
+            "type": "object",
+            "fa_icon": "fas fa-university",
+            "description": "Parameters used to describe centralised config profiles.",
+            "properties": {
+                "config_profile_name": {
+                    "type": "string",
+                    "description": "Config profile name.",
+                    "hidden": true
+                },
+                "config_profile_description": {
+                    "type": "string",
+                    "description": "Config profile description.",
+                    "hidden": true
+                },
+                "custom_config_version": {
+                    "type": "string",
+                    "default": "master",
+                    "description": "Custom config version.",
+                    "hidden": true
+                },
+                "custom_config_base": {
+                    "type": "string",
+                    "description": "Custom config base.",
+                    "hidden": true
+                },
+                "config_profile_contact": {
+                    "type": "string",
+                    "description": "Config profile contact.",
+                    "hidden": true
+                },
+                "config_profile_url": {
+                    "type": "string",
+                    "description": "Config profile url.",
+                    "hidden": true
+                },
+                "slurm_account": {
+                    "type": "string",
+                    "description": "SLURM account (-profile hpc).",
+                    "hidden": true
+                },
+                "slurm_partition": {
+                    "type": "string",
+                    "default": "batch",
+                    "description": "SLURM partition (-profile hpc).",
+                    "hidden": true
+                },
+                "slurm_extra": {
+                    "type": "string",
+                    "description": "Extra sbatch options (-profile hpc).",
+                    "hidden": true
+                }
+            }
+        }
+    },
+    "allOf": [
+        {
+            "$ref": "#/$defs/input_output_options"
+        },
+        {
+            "$ref": "#/$defs/reference_genome_options"
+        },
+        {
+            "$ref": "#/$defs/contaminant_options"
+        },
+        {
+            "$ref": "#/$defs/rrna_options"
+        },
+        {
+            "$ref": "#/$defs/annotation_options"
+        },
+        {
+            "$ref": "#/$defs/busco_options"
+        },
+        {
+            "$ref": "#/$defs/design_options"
+        },
+        {
+            "$ref": "#/$defs/statistics_options"
+        },
+        {
+            "$ref": "#/$defs/assembly_options"
+        },
+        {
+            "$ref": "#/$defs/expression_filter_options"
+        },
+        {
+            "$ref": "#/$defs/gene_map_options"
+        },
+        {
+            "$ref": "#/$defs/step_options"
+        },
+        {
+            "$ref": "#/$defs/environment_options"
+        },
+        {
+            "$ref": "#/$defs/multiqc_options"
+        },
+        {
+            "$ref": "#/$defs/generic_options"
+        },
+        {
+            "$ref": "#/$defs/institutional_config_options"
+        }
+    ]
+}

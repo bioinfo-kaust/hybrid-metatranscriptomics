@@ -1,0 +1,42 @@
+name: "remap_annotation"
+description: "Re-key an annotation table onto a different transcript->gene map."
+keywords:
+  - remap
+  - annotation
+  - transcriptomics
+tools:
+  - "python":
+      description: "python"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - - "meta":
+          type: map
+          description: "meta"
+    - "tx2gene":
+          type: file
+          description: "tx2gene"
+  - - "meta2":
+          type: map
+          description: "meta2"
+    - "annotation":
+          type: file
+          description: "annotation"
+output:
+  annotation:
+    - - "meta":
+            type: map
+            description: "meta"
+      - "annotation.${meta.id}.tsv":
+            type: file
+            description: "annotation.${meta.id}.tsv"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

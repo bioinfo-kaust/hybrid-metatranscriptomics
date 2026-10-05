@@ -1,0 +1,52 @@
+name: "integrate_annotation"
+description: "One per-transcript annotation table: ORFs, DIAMOND hits per database, eggNOG and InterPro."
+keywords:
+  - integrate
+  - annotation
+  - transcriptomics
+tools:
+  - "python":
+      description: "python"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - - "meta":
+          type: map
+          description: "meta"
+    - "tx2gene":
+          type: file
+          description: "tx2gene"
+    - "pep":
+          type: file
+          description: "pep"
+  - "diamond_hits":
+      type: file
+      description: "diamond_hits"
+  - "emapper":
+      type: file
+      description: "emapper"
+  - "interpro":
+      type: file
+      description: "interpro"
+output:
+  table:
+    - - "meta":
+            type: map
+            description: "meta"
+      - "annotation.${meta.id}.tsv":
+            type: file
+            description: "annotation.${meta.id}.tsv"
+  summary:
+    - "annotation.${meta.id}.summary.txt":
+        type: file
+        description: "annotation.${meta.id}.summary.txt"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

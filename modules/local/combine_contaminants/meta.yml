@@ -1,0 +1,30 @@
+name: "combine_contaminants"
+description: "A directory of contaminant FASTA files (plain or gzipped), combined as-is."
+keywords:
+  - combine
+  - contaminants
+  - transcriptomics
+tools:
+  - "seqkit":
+      description: "seqkit"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - "fasta_dir":
+      type: file
+      description: "fasta_dir"
+output:
+  fasta:
+    - "contaminants_combined.fna":
+        type: file
+        description: "contaminants_combined.fna"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

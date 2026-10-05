@@ -1,0 +1,48 @@
+name: "isoform_switching"
+description: "Differential isoform usage."
+keywords:
+  - isoform
+  - switching
+  - transcriptomics
+tools:
+  - "bioconductor-isoformswitchanalyzer":
+      description: "bioconductor-isoformswitchanalyzer"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - "quants":
+      type: file
+      description: "quants"
+  - - "meta":
+          type: map
+          description: "meta"
+    - "fasta":
+          type: file
+          description: "fasta"
+  - - "meta2":
+          type: map
+          description: "meta2"
+    - "gtf":
+          type: file
+          description: "gtf"
+  - "samplesheet":
+      type: file
+      description: "samplesheet"
+output:
+  results:
+    - - "meta":
+            type: map
+            description: "meta"
+      - "isoforms_${meta.id}":
+            type: file
+            description: "isoforms_${meta.id}"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

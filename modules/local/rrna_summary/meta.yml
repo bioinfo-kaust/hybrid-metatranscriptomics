@@ -1,0 +1,33 @@
+name: "rrna_summary"
+description: "Per-sample rRNA percentage, parsed from bbduk's own accounting (BBMAP_BBDUK's log)."
+keywords:
+  - rrna
+  - summary
+  - transcriptomics
+tools:
+  - "python":
+      description: "python"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - - "meta":
+          type: map
+          description: "meta"
+    - "log":
+          type: file
+          description: "log"
+output:
+  summary:
+    - "${meta.id}.rrna.tsv":
+        type: file
+        description: "${meta.id}.rrna.tsv"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

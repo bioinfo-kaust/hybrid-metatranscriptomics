@@ -1,6 +1,7 @@
 # Hybrid metatranscriptomics
 
-A Nextflow (DSL2) workflow (`hybrid-metatranscriptomics`) that builds a **host-only reference
+A Nextflow (DSL2) workflow (`hybrid-metatranscriptomics`), laid out on the
+[nf-core](https://nf-co.re) template, that builds a **host-only reference
 transcriptome from long + short reads**, with contaminant reads (e.g. symbiont) removed **before**
 anything is assembled, then annotates it, quantifies it and tests it for differential expression.
 
@@ -15,16 +16,16 @@ is shown below.
 ![hybrid-metatranscriptomics metro map](assets/metro_map.svg)
 
 ```bash
-module load nextflow
+module load nextflow/25.10.4          # Nextflow >= 25.10.4
 
 # copy a params file and add your read samplesheets and outdir, then run it
 cp assets/params_cassiopea_uv.yml my_params.yml      # or params_example_other_species.yml
-nextflow run . -profile hpc,envmodules -params-file my_params.yml
+nextflow run . -profile hpc,singularity -params-file my_params.yml --outdir results
 
 # or everything on the command line (values shown are the Cassiopea run's)
-nextflow run . -profile hpc,envmodules \
-    --samplesheet            samplesheet_short.csv \
-    --longread_samplesheet   samplesheet_long.csv \
+nextflow run . -profile hpc,singularity \
+    --input                  samplesheet_short.csv \
+    --longread_input         samplesheet_long.csv \
     --genome_accession       GCA_018155075.1 \
     --contaminant_accessions GCA_977109205.1,GCA_965643015.1,GCA_947184155.2 \
     --reference_level        Control \
@@ -34,14 +35,22 @@ nextflow run . -profile hpc,envmodules \
     --slurm_account          my_allocation \
     --outdir                 results
 
-# validate the whole DAG in seconds, no tools needed
-nextflow run . -profile test -stub-run
+# validate the whole DAG in a few minutes on the tiny fixtures in assets/test
+nextflow run . -profile test,singularity -stub-run --outdir test_out
 ```
 
-**Required:** `--samplesheet`, `--eggnog_data_dir` (or `--skip_eggnog`) and `--outdir`.
+**Software.** Every process carries a container and a conda environment, so pick one profile:
+`docker`, `singularity`, `apptainer`, `podman`, `shifter`, `charliecloud`, `conda` / `mamba`, or
+`envmodules` to `module load` the tools a cluster already provides (`params.mod` names them, see
+§4). Add an executor profile (`hpc` for SLURM with an account and partition, `slurm` for plain
+SLURM) or an [nf-core institutional config](https://github.com/nf-core/configs) with
+`-profile <institution>`. Parameters are validated against `nextflow_schema.json` at start-up;
+`--help` lists them and `--help_full` lists all of them.
+
+**Required:** `--input`, `--outdir`, and `--eggnog_data_dir` (or `--skip_eggnog`).
 **Set for your experiment:** the host genome (`--genome` or `--genome_accession`), the genomes
 whose reads are removed before assembly (`--contaminant_accessions`, `--contaminant_fasta` or
-`--contaminant_dir`), and `--longread_samplesheet` (or `--skip_longread`), `--contrasts` and
+`--contaminant_dir`), and `--longread_input` (or `--skip_longread`), `--contrasts` and
 `--busco_lineage`, whose defaults are the Cassiopea run's example sheets and lineage.
 `--reference_level` defaults to the first level alphabetically.
 
@@ -75,7 +84,7 @@ The ladder measures what each one was worth instead of hiding it in one merge.
 
 ## 2. Input
 
-### Short reads — `--samplesheet`
+### Short reads — `--input`
 
 ```csv
 sample,condition,replicate,fastq_1,fastq_2
@@ -85,9 +94,10 @@ S02_Control_D,Control,D,/data/…_L001_R1_001.fastq.gz,/data/…_L001_R2_001.fas
 ```
 
 Several rows with the same `sample` are units (lanes) of one library and are merged. The factor
-column is named by `--condition_column`, so any column name works. Paired-end only.
+column is named by `--condition_column`, so any column name works. Paired-end only. The sheet
+is validated against `assets/schema_input.json` (columns, file existence, `.fastq.gz`/`.fq.gz`).
 
-### Long reads — `--longread_samplesheet`
+### Long reads — `--longread_input`
 
 ```csv
 sample,condition,reads
@@ -117,15 +127,15 @@ run passes `--longread_membership` with a table built from the Iso-Seq run's own
 (`extra/pacbio_fl_counts_to_membership.py`), which turns one pooled HQ FASTA into three per-condition samples without
 changing what the reference is built from.
 
-### Assembly-only short reads — `--assembly_samplesheet`
+### Assembly-only short reads — `--assembly_input`
 
-Same columns as `--samplesheet`. These libraries go through the same preprocessing (fastp →
+Same columns as `--input`. These libraries go through the same preprocessing (fastp →
 rRNA → decontamination) and into the two short-read assembly routes (StringTie, Trinity), but
 are **never quantified or tested** — use them for extra assembly depth, e.g. public libraries
 from another study of the same species. Their preprocessing tables are published as
 `qc/*_assembly_only.tsv` and the dashboard draws them as a dashed input box. The Cassiopea run
 uses it for the two Gacesa et al. libraries (SRR10388048/49); `assets/samplesheet_assembly_gacesa.csv`
-shows the layout — download the reads and set `assembly_samplesheet` to your copy.
+shows the layout — download the reads and set `assembly_input` to your copy.
 
 ### References
 
@@ -166,8 +176,8 @@ results_nf/
 │   ├── isoseq.fasta … all_sources_dedup.fasta   ← the reference ladder, one FASTA per rung
 │   ├── all_sources_dedup_expressed.fasta         ← the quantification (DE) reference
 │   ├── tx2gene.<set>.tsv          ← string-stripped map (an UPPER BOUND on distinct loci)
-│   ├── tx2gene.<set>_locus.tsv    ← genomic-locus map, the default primary map (see §5)
-│   ├── tx2gene.<set>_corset.tsv   ← Corset read-sharing map (see §5)
+│   ├── tx2gene.<set>_locus.tsv    ← genomic-locus map, the default primary map (see §6)
+│   ├── tx2gene.<set>_corset.tsv   ← Corset read-sharing map (see §6)
 │   ├── locus_rebuild_report.txt
 │   └── qc/  BUSCO and stats for every rung
 ├── annotation/                  annotation.<set>.tsv (+ summary), peptides, CDS, raw searches
@@ -177,8 +187,10 @@ results_nf/
 ├── decontam/                    combined-index log, long-read classification, residual audits
 ├── qc/                          fastp, FastQC, rRNA, per-sample decontamination, MultiQC
 ├── figures_<set>/               PDF + 300 dpi PNG
-└── pipeline_info/               timeline, report, trace, DAG
+└── pipeline_info/               timeline, report, trace, DAG, software versions, run_manifest.json
 ```
+
+`docs/output.md` lists every published file.
 
 `run_summary.txt` includes the end-to-end accounting check: the fragments salmon processed must
 equal the read pairs that survived decontamination.
@@ -234,15 +246,15 @@ bin/build_dashboard.py --dir <a directory of pipeline outputs> \
 
 | File | What it holds |
 |---|---|
-| `nextflow.config` | every parameter and its default |
+| `nextflow.config` | every parameter and its default, the profiles, the manifest |
+| `nextflow_schema.json` | parameter types, help and validation (`--help`, nf-schema) |
 | `assets/params_cassiopea_uv.yml` | the Cassiopea experiment (`-params-file`); no paths |
 | `assets/params_example_other_species.yml` | the same layout for another species |
-| `conf/base.config` | resource tiers per process label |
-| `conf/modules.config` | everything per process: `ext.args` (tool command lines), publishing rules, and which module / conda package provides the tool |
+| `conf/base.config` | resource tiers per process label, retry policy, `resourceLimits` |
+| `conf/modules.config` | everything per process: `ext.args` (tool command lines), publishing rules, measured resources, and which environment module provides the tool |
 | `conf/envmodules.config` | one switch: `use_modules`. The module names live in `params.mod` |
-| `conf/conda.config` | one switch: `use_conda_pkgs`. The packages live in `params.conda_pkg` |
-| `conf/hpc.config` | SLURM account, partition, queue limits |
-| `conf/test.config` | tiny resources for `-stub-run` |
+| `conf/hpc.config` | SLURM account, partition, queue limits, per-task caps |
+| `conf/test.config` | the tiny fixtures in `assets/test`, for `-stub-run` |
 
 Change a tool's version in one place:
 
@@ -250,8 +262,8 @@ Change a tool's version in one place:
 nextflow run . -profile hpc,envmodules --mod.minimap2 minimap2/2.31
 ```
 
-All four per-process settings — arguments, publishing, module, conda — deliberately live in the
-same file. A `withName:` block declared in a *profile* **replaces** the base config's block for
+All per-process settings — arguments, publishing, resources, module — deliberately live in the
+same file. Containers and conda environments are declared in each module (`modules/*/*/main.nf`). A `withName:` block declared in a *profile* **replaces** the base config's block for
 that process, `ext.args` and `publishDir` included, so splitting provisioning into a profile
 silently drops the tool arguments and scatters the outputs. That bug was live here until the
 layout above; `nextflow config -profile hpc,envmodules` now resolves to exactly the same
@@ -267,18 +279,20 @@ process {
 ```
 
 Tools with no module on a given cluster (here TransDecoder and gffread) come from
-`--extra_path`, which is prepended to `PATH` for exactly the processes that need them.
+`--extra_path`, which is prepended to `PATH` for exactly the processes that need them; Corset from
+`--corset_bin`, and extra R packages from `--r_libs`. None of these is needed with containers or
+conda, and `--r_libs` must not be set with them (a host library would shadow the container's).
 
 ---
 
-## 4. Resources and parallelism
+## 5. Resources and parallelism
 
 Nextflow is a dataflow engine: **anything whose inputs are ready runs at once**, as separate SLURM
 jobs. Concretely, in this pipeline that means
 
-* the 15-sample stages fan out — `FASTP`, `BBDUK_RRNA_PE`, `FASTQC`, `DECONTAM_SHORT`,
-  `STAR_ALIGN`, `STRINGTIE`, `SALMON_QUANT` each run as 15 concurrent jobs;
-* the long-read branch (`PBMM2_ALIGN` → `ISOSEQ_COLLAPSE`, and `CDHIT_EST` reference-free) runs
+* the 15-sample stages fan out — `FASTP`, `BBMAP_BBDUK`, `FASTQC`, `DECONTAM_SHORT`,
+  `STAR_ALIGN`, `STRINGTIE_STRINGTIE`, `SALMON_QUANT` each run as 15 concurrent jobs;
+* the long-read branch (`PBMM2_ALIGN` → `ISOSEQ_COLLAPSE`, and `CLUSTER_LRFREE` reference-free) runs
   alongside the short-read branch;
 * the four assembly sources are independent until they are layered: Trinity runs while STAR and
   StringTie do, and both run while the long-read routes do;
@@ -300,23 +314,24 @@ CPUs, requested memory, elapsed) and are recorded with their evidence in `conf/m
 |---|---:|---:|---|---|
 | `TRINITY` | 32 | 250 GB | **9 h 18 m** | measured at exactly this size |
 | `INTERPROSCAN` | 32 | 96 GB | 45–70 min | measured |
-| `CDHIT_EST` / `CDHIT_2D` | 32 | 200 GB | up to ~1 h | `-M 0` takes what it needs |
-| `DIAMOND_BLASTP`, `EGGNOG_MAPPER` | 24 | 96 GB | ~30 min | measured together at 24 / 120 GB |
+| `CLUSTER_*` (vsearch) | 32 | 200 GB | up to a few hours | holds every sequence in memory |
+| `DIAMOND_BLASTP`, `EGGNOGMAPPER` | 24 | 96 GB | ~30 min | measured together at 24 / 120 GB |
 | `DECONTAM_SHORT` (×15) | 24 | 96 GB | ~8 min each | original run used 24 / 150 GB |
 | `STAR_ALIGN` (×15) | 16 | 64 GB | 6–32 min each | measured at exactly this size |
 | `SALMON_QUANT` (×15) | 12 | 32 GB | 2–10 min each | measured at exactly this size |
-| `BUSCO` (×6) | 24 | 64 GB | 1–73 min | measured at exactly this size |
+| `BUSCO_BUSCO` (×7) | 24 | 64 GB | 1–73 min | measured at exactly this size |
 | `DESEQ2`, `ENRICHMENT`, `FIGURES` | 8 | 48 GB | 2–15 min | single-threaded R |
 | table/summary steps | 1–2 | 4–16 GB | seconds | one pass over small files |
 
 Memory and time scale with `task.attempt`, so a task that dies on memory is retried larger rather
-than failing the run, and every value is capped by `--max_cpus` / `--max_memory` / `--max_time`.
+than failing the run, and every value is capped by `process.resourceLimits` (`conf/base.config`;
+lower it in your own `-c` config, or in `conf/hpc.config`, to fit your largest node).
 On a typical mixed-node SLURM partition (e.g. nodes of 40 cpus / 329 GB, 128 / 457 GB, 192 / 713 GB)
 these sizes let several tasks share a node instead of each holding one.
 
 Trinity is the critical path: expect the whole run to be dominated by it.
 
-## 5. Gene identity — read this before quoting a gene count
+## 6. Gene identity — read this before quoting a gene count
 
 Three gene maps are produced. `--dge_primary_map` (default `locus`) names the one the headline
 numbers come from; the other two are run through DE and enrichment as sensitivity arms.
@@ -354,7 +369,7 @@ shuffle against 56 for locus and 60 for label-free Corset — hence the label-fr
 
 ---
 
-## 6. Comparison against a published reference — deliberately outside the pipeline
+## 7. Comparison against a published reference — deliberately outside the pipeline
 
 Which published reference counts as authoritative is an interpretation choice, it changes as new
 references appear, and it must not silently alter pipeline outputs on a re-run. So it is a
@@ -372,14 +387,20 @@ that a published *transcriptome* makes genes the authors annotated but did not e
 novel, and that coverage measured on our transcript penalises short de novo fragments.
 
 
-## 7. Repository Layout
+## 8. Repository layout
 
 ```
-main.nf                     workflow entry point, samplesheet parsing, reporting
-subworkflows/local/         prepare_references, read_preprocess, build_transcriptome,
-                            annotate, quantify_and_dge
-modules/local/              references, shortread_qc, decontam, assembly, annotation,
-                            quant, dge, reporting  (every process has a stub)
+main.nf                     entry point (nf-core template): initialise, run, complete
+workflows/                  hybridmetatranscriptomics.nf, the pipeline body
+subworkflows/local/         prepare_references, short_read_preprocess, long_read_preprocess,
+                            build_transcriptome, transcriptome_busco, annotate,
+                            quantify_and_dge, and utils_* (samplesheet parsing, input checks)
+subworkflows/nf-core/       template utilities (nf-schema, completion email/summary)
+modules/nf-core/            community modules (fastp, bbduk, STAR, StringTie, Trinity, salmon,
+                            BUSCO, DIAMOND, eggNOG-mapper, InterProScan, MultiQC, …); modules.json
+                            pins their versions
+modules/local/              pipeline-specific processes, one per directory with main.nf,
+                            environment.yml and meta.yml (every process has a stub)
 bin/                        analysis scripts on PATH inside every task
                             (build_dashboard.py renders the dashboard from a run's outputs)
 assets/                     example samplesheets, contrasts, and the params files
@@ -388,5 +409,6 @@ extra/                      out-of-pipeline tools: the comparison against a publ
                             reference, the PacBio FL-count → membership converter, the
                             dashboard smoke test, and the metro-map generator
 conf/                       see §4
+docs/                       usage.md, output.md
 run_slurm.sh                SLURM driver job that launches and waits for a run
 ```

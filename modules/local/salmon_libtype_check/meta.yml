@@ -1,0 +1,42 @@
+name: "salmon_libtype_check"
+description: "salmon runs with -l A and auto-detects the library type; this CHECKS the detection against --strandedness rather than printing it."
+keywords:
+  - salmon
+  - libtype
+  - check
+tools:
+  - "python":
+      description: "python"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - - "meta":
+          type: map
+          description: "meta"
+    - "quant":
+          type: file
+          description: "quant"
+  - "strandedness":
+      type: string
+      description: "strandedness"
+  - "enforce":
+      type: string
+      description: "enforce"
+output:
+  quant:
+    - - "meta":
+            type: map
+            description: "meta"
+      - "${quant}":
+            type: file
+            description: "${quant}"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

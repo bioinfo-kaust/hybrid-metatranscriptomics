@@ -1,0 +1,55 @@
+name: "bbduk_rrna_se"
+description: "rRNA depletion of long-read isoforms (FASTA, single-end)."
+keywords:
+  - bbduk
+  - rrna
+  - se
+tools:
+  - "bbmap":
+      description: "bbmap"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - - "meta":
+          type: map
+          description: "meta"
+    - "seqs":
+          type: file
+          description: "seqs"
+  - "rrna_db":
+      type: file
+      description: "rrna_db"
+output:
+  seqs:
+    - - "meta":
+            type: map
+            description: "meta"
+      - "${meta.id}.rrna_clean.fasta":
+            type: file
+            description: "${meta.id}.rrna_clean.fasta"
+  removed:
+    - "${meta.id}.rrna_hits.fasta":
+        type: file
+        description: "${meta.id}.rrna_hits.fasta"
+  stats:
+    - "${meta.id}.bbduk_stats.txt":
+        type: file
+        description: "${meta.id}.bbduk_stats.txt"
+  log:
+    - "${meta.id}.bbduk.log":
+        type: file
+        description: "${meta.id}.bbduk.log"
+  summary:
+    - "${meta.id}.longread_rrna.tsv":
+        type: file
+        description: "${meta.id}.longread_rrna.tsv"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

@@ -1,0 +1,33 @@
+name: "run_summary"
+description: "A single human-readable summary of what the run produced, with the numbers to check."
+keywords:
+  - run
+  - summary
+  - transcriptomics
+tools:
+  - "python":
+      description: "python"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - "tables":
+      type: file
+      description: "tables"
+  - "primary_map":
+      type: string
+      description: "primary_map"
+output:
+  summary:
+    - "run_summary.txt":
+        type: file
+        description: "run_summary.txt"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

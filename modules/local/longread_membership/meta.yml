@@ -1,0 +1,33 @@
+name: "longread_membership"
+description: "Which sequences came from which long-read sample."
+keywords:
+  - longread
+  - membership
+  - transcriptomics
+tools:
+  - "python":
+      description: "python"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - - "meta":
+          type: map
+          description: "meta"
+    - "seqs":
+          type: file
+          description: "seqs"
+output:
+  tsv:
+    - "${meta.id}.membership.tsv":
+        type: file
+        description: "${meta.id}.membership.tsv"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

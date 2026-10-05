@@ -1,0 +1,66 @@
+name: "figures"
+description: "Figure set."
+keywords:
+  - figures
+  - transcriptomics
+  - assembly
+tools:
+  - "bioconductor-deseq2":
+      description: "bioconductor-deseq2"
+      licence: []
+  - "bioconductor-tximport":
+      description: "bioconductor-tximport"
+      licence: []
+  - "bioconductor-apeglm":
+      description: "bioconductor-apeglm"
+      licence: []
+  - "r-ashr":
+      description: "r-ashr"
+      licence: []
+  - "bioconductor-clusterprofiler":
+      description: "bioconductor-clusterprofiler"
+      licence: []
+  - "bioconductor-go.db":
+      description: "bioconductor-go.db"
+      licence: []
+  - "r-ggplot2":
+      description: "r-ggplot2"
+      licence: []
+input:
+  - - "meta":
+          type: map
+          description: "meta"
+    - "dge_dir":
+          type: file
+          description: "dge_dir"
+    - "enr_dir":
+          type: file
+          description: "enr_dir"
+  - - "meta2":
+          type: map
+          description: "meta2"
+    - "annotation":
+          type: file
+          description: "annotation"
+  - "qc_tables":
+      type: file
+      description: "qc_tables"
+  - "busco":
+      type: file
+      description: "busco"
+  - "ladder":
+      type: file
+      description: "ladder"
+output:
+  figures:
+    - "figures_${meta.id}":
+        type: file
+        description: "figures_${meta.id}"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

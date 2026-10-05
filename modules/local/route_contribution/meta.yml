@@ -1,0 +1,36 @@
+name: "route_contribution"
+description: "The auditable ladder: one row per reference variant with transcripts, genes and BUSCO."
+keywords:
+  - route
+  - contribution
+  - transcriptomics
+tools:
+  - "python":
+      description: "python"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - "stats":
+      type: file
+      description: "stats"
+  - "tx2gene":
+      type: file
+      description: "tx2gene"
+  - "busco":
+      type: file
+      description: "busco"
+output:
+  table:
+    - "route_contribution.tsv":
+        type: file
+        description: "route_contribution.tsv"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

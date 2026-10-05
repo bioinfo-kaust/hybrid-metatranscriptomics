@@ -1,0 +1,59 @@
+name: "decontam_short"
+description: "Short reads: one best placement per read on the combined host + contaminant index; a pair is removed when either mate's primary alignment is on a contaminant scaffold."
+keywords:
+  - decontam
+  - short
+  - transcriptomics
+tools:
+  - "minimap2":
+      description: "minimap2"
+      licence: []
+  - "samtools":
+      description: "samtools"
+      licence: []
+  - "seqkit":
+      description: "seqkit"
+      licence: []
+  - "python":
+      description: "python"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - - "meta":
+          type: map
+          description: "meta"
+    - "reads":
+          type: file
+          description: "reads"
+  - "index":
+      type: file
+      description: "index"
+  - "contaminant_prefix":
+      type: string
+      description: "contaminant_prefix"
+output:
+  reads:
+    - - "meta":
+            type: map
+            description: "meta"
+      - "${meta.id}_R{1":
+            type: file
+            description: "${meta.id}_R{1"
+  summary:
+    - "${meta.id}.decontam.tsv":
+        type: file
+        description: "${meta.id}.decontam.tsv"
+  log:
+    - "${meta.id}.minimap2.log":
+        type: file
+        description: "${meta.id}.minimap2.log"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

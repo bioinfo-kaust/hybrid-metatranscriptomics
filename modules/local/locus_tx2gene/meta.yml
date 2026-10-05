@@ -1,0 +1,68 @@
+name: "locus_tx2gene"
+description: "Gene identity from GENOMIC LOCI rather than from string-stripped transcript ids."
+keywords:
+  - locus
+  - tx2gene
+  - transcriptomics
+tools:
+  - "minimap2":
+      description: "minimap2"
+      licence: []
+  - "bedtools":
+      description: "bedtools"
+      licence: []
+  - "python":
+      description: "python"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - - "meta":
+          type: map
+          description: "meta"
+    - "fasta":
+          type: file
+          description: "fasta"
+  - "genome":
+      type: file
+      description: "genome"
+  - - "meta2":
+          type: map
+          description: "meta2"
+    - "tx2gene":
+          type: file
+          description: "tx2gene"
+  - - "meta3":
+          type: map
+          description: "meta3"
+    - "annotation":
+          type: file
+          description: "annotation"
+output:
+  tx2gene:
+    - - "meta_out":
+            type: map
+            description: "meta_out"
+      - "tx2gene.${meta.id}_locus.tsv":
+            type: file
+            description: "tx2gene.${meta.id}_locus.tsv"
+  annotation:
+    - - "meta_out":
+            type: map
+            description: "meta_out"
+      - "annotation.${meta.id}_locus.tsv":
+            type: file
+            description: "annotation.${meta.id}_locus.tsv"
+  report:
+    - "locus_rebuild_report.txt":
+        type: file
+        description: "locus_rebuild_report.txt"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

@@ -1,0 +1,46 @@
+name: "longread_genome_seq"
+description: "Route A models with GENOME bases: gffread spliced at the collapsed models' exon coordinates."
+keywords:
+  - longread
+  - genome
+  - seq
+tools:
+  - "gffread":
+      description: "gffread"
+      licence: []
+  - "seqkit":
+      description: "seqkit"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - - "meta":
+          type: map
+          description: "meta"
+    - "gtf":
+          type: file
+          description: "gtf"
+  - "genome":
+      type: file
+      description: "genome"
+output:
+  fasta:
+    - - "meta":
+            type: map
+            description: "meta"
+      - "collapsed.genome.fasta":
+            type: file
+            description: "collapsed.genome.fasta"
+  stats:
+    - "collapsed.genome.stats.tsv":
+        type: file
+        description: "collapsed.genome.stats.tsv"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

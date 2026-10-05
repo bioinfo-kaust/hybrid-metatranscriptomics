@@ -1,13 +1,13 @@
 # Example: running the workflow on a different species and dataset.
 #
-#   nextflow run . -profile slurm,envmodules -params-file assets/params_example_other_species.yml
+#   nextflow run . -profile slurm,singularity -params-file assets/params_example_other_species.yml
 #
 # Unset parameters keep the generic defaults in nextflow.config. params_cassiopea_uv.yml is the
 # complete file for the experiment the workflow was developed on.
 
 # ---- input ----
-samplesheet: /data/myproject/samplesheet.csv            # sample,condition,replicate,fastq_1,fastq_2
-longread_samplesheet: /data/myproject/longreads.csv     # sample,condition,reads   (or null)
+input: /data/myproject/samplesheet.csv                  # sample,condition,replicate,fastq_1,fastq_2
+longread_input: /data/myproject/longreads.csv           # sample,condition,reads   (or null)
 outdir: /data/myproject/results_nf
 
 # ---- references: downloaded, not staged by hand ----
@@ -46,7 +46,6 @@ run_locus_rebuild: true
 skip_dtu: true
 skip_interproscan: false
 
-# ---- environment ----
-r_libs: /shared/envs/Rlib
-extra_path: /shared/envs/tools/bin                      # TransDecoder, gffread
-trinity_max_memory: 240G
+# ---- environment (only with -profile envmodules; containers need none of this) ----
+# r_libs: /shared/envs/Rlib
+# extra_path: /shared/envs/tools/bin                    # TransDecoder, gffread

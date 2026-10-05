@@ -1,0 +1,53 @@
+name: "corset"
+description: "A third gene map, built from read sharing rather than sequence identity."
+keywords:
+  - corset
+  - transcriptomics
+  - assembly
+tools:
+  - "corset":
+      description: "corset"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+  - "gzip":
+      description: "gzip"
+      licence: []
+input:
+  - "eq_classes":
+      type: file
+      description: "eq_classes"
+  - - "meta":
+          type: map
+          description: "meta"
+    - "tx2gene":
+          type: file
+          description: "tx2gene"
+  - "samplesheet":
+      type: file
+      description: "samplesheet"
+output:
+  tx2gene:
+    - - "meta_out":
+            type: map
+            description: "meta_out"
+      - "tx2gene.${meta.id}_corset.tsv":
+            type: file
+            description: "tx2gene.${meta.id}_corset.tsv"
+  results:
+    - "corset_${meta.id}":
+        type: file
+        description: "corset_${meta.id}"
+  summary:
+    - "${meta.id}_corset.summary.txt":
+        type: file
+        description: "${meta.id}_corset.summary.txt"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

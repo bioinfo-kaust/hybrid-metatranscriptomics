@@ -1,0 +1,36 @@
+name: "merge_set"
+description: "Concatenate a base set with the novel contributions of one or more sources."
+keywords:
+  - merge
+  - set
+  - transcriptomics
+tools:
+  - "seqkit":
+      description: "seqkit"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - - "meta":
+          type: map
+          description: "meta"
+    - "parts":
+          type: file
+          description: "parts"
+output:
+  fasta:
+    - - "meta":
+            type: map
+            description: "meta"
+      - "${meta.id}.fasta":
+            type: file
+            description: "${meta.id}.fasta"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Integrate every line of annotation evidence into one per-transcript table.
 
-Inputs are whatever is available: one or more DIAMOND result files (diamond/<db>.tsv), an
+Inputs are whatever is available: one or more DIAMOND result files (diamond/<db>.tsv or .txt), an
 eggNOG-mapper annotations file, and an InterProScan TSV. The first DIAMOND database in
 alphabetical order — or the one named by --primary-db — supplies the generic protein_* columns
 that downstream steps key on; every other database contributes <name>_hit / <name>_desc.
@@ -67,10 +67,12 @@ def top_hits(path):
 
 
 dbs = {}
-for path in sorted(glob.glob(os.path.join(args.diamond_dir, "*.tsv"))):
+# tabular BLAST (--outfmt 6): .txt from the nf-core module, .tsv from earlier releases
+for path in sorted(glob.glob(os.path.join(args.diamond_dir, "*.tsv")) +
+                   glob.glob(os.path.join(args.diamond_dir, "*.txt"))):
     name = os.path.basename(path)
     name = re.sub(r"^diamond_", "", name)
-    name = re.sub(r"\.tsv$", "", name)
+    name = re.sub(r"\.(tsv|txt)$", "", name)
     dbs[name] = top_hits(path)
 
 if args.primary_db and args.primary_db not in dbs:

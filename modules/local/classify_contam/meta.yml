@@ -1,0 +1,66 @@
+name: "classify_contam"
+description: "Residual audit of an assembled set."
+keywords:
+  - classify
+  - contam
+  - transcriptomics
+tools:
+  - "minimap2":
+      description: "minimap2"
+      licence: []
+  - "samtools":
+      description: "samtools"
+      licence: []
+  - "seqkit":
+      description: "seqkit"
+      licence: []
+  - "python":
+      description: "python"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - - "meta":
+          type: map
+          description: "meta"
+    - "fasta":
+          type: file
+          description: "fasta"
+  - "genome":
+      type: file
+      description: "genome"
+  - "contaminants":
+      type: file
+      description: "contaminants"
+  - "keep_class":
+      type: string
+      description: "keep_class"
+output:
+  fasta:
+    - - "meta":
+            type: map
+            description: "meta"
+      - "${meta.id}.host.fasta":
+            type: file
+            description: "${meta.id}.host.fasta"
+  counts:
+    - "${meta.id}.hostsym_counts.txt":
+        type: file
+        description: "${meta.id}.hostsym_counts.txt"
+  classification:
+    - "${meta.id}.classification.tsv":
+        type: file
+        description: "${meta.id}.classification.tsv"
+  host_ids:
+    - "${meta.id}.host.ids":
+        type: file
+        description: "${meta.id}.host.ids"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

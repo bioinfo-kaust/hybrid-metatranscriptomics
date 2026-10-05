@@ -1,0 +1,43 @@
+name: "sqanti3_qc"
+description: "SQANTI3 structural QC of the long-read models against the short-read annotation."
+keywords:
+  - sqanti3
+  - qc
+  - transcriptomics
+tools:
+  - "sqanti3":
+      description: "sqanti3"
+      licence: []
+input:
+  - - "meta":
+          type: map
+          description: "meta"
+    - "isoforms_gtf":
+          type: file
+          description: "isoforms_gtf"
+  - - "meta2":
+          type: map
+          description: "meta2"
+    - "reference_gtf":
+          type: file
+          description: "reference_gtf"
+  - "genome":
+      type: file
+      description: "genome"
+output:
+  results:
+    - "sqanti3_${meta.id}":
+        type: file
+        description: "sqanti3_${meta.id}"
+  summary:
+    - "sqanti3_${meta.id}.summary.txt":
+        type: file
+        description: "sqanti3_${meta.id}.summary.txt"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

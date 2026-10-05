@@ -1,0 +1,33 @@
+name: "longread_pool"
+description: "Pool the (usually few, unreplicated) long-read samples into one reference-building input."
+keywords:
+  - longread
+  - pool
+  - transcriptomics
+tools:
+  - "seqkit":
+      description: "seqkit"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - "fastas":
+      type: file
+      description: "fastas"
+output:
+  seqs:
+    - - "[id: 'longreads']":
+            type: string
+            description: "[id: 'longreads']"
+      - "longreads_pooled.fasta":
+            type: file
+            description: "longreads_pooled.fasta"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

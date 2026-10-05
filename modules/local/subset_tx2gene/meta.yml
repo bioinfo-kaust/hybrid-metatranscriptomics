@@ -1,0 +1,39 @@
+name: "subset_tx2gene"
+description: "Restrict a tx2gene map to the transcripts that survive into a deduplicated set."
+keywords:
+  - subset
+  - tx2gene
+  - transcriptomics
+tools:
+  - "python":
+      description: "python"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - - "meta":
+          type: map
+          description: "meta"
+    - "fasta":
+          type: file
+          description: "fasta"
+  - "tx2gene":
+      type: file
+      description: "tx2gene"
+output:
+  tx2gene:
+    - - "meta":
+            type: map
+            description: "meta"
+      - "tx2gene.${meta.id}.tsv":
+            type: file
+            description: "tx2gene.${meta.id}.tsv"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

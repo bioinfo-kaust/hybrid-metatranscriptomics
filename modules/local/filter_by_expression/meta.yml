@@ -1,0 +1,73 @@
+name: "filter_by_expression"
+description: "Expression-filtered reference."
+keywords:
+  - filter
+  - by
+  - expression
+tools:
+  - "python":
+      description: "python"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - "quants":
+      type: file
+      description: "quants"
+  - - "meta":
+          type: map
+          description: "meta"
+    - "fasta":
+          type: file
+          description: "fasta"
+  - - "meta2":
+          type: map
+          description: "meta2"
+    - "tx2gene":
+          type: file
+          description: "tx2gene"
+  - - "meta3":
+          type: map
+          description: "meta3"
+    - "annotation":
+          type: file
+          description: "annotation"
+output:
+  fasta:
+    - - "meta_out":
+            type: map
+            description: "meta_out"
+      - "${meta.id}_expressed.fasta":
+            type: file
+            description: "${meta.id}_expressed.fasta"
+  tx2gene:
+    - - "meta_out":
+            type: map
+            description: "meta_out"
+      - "tx2gene.${meta.id}_expressed.tsv":
+            type: file
+            description: "tx2gene.${meta.id}_expressed.tsv"
+  annotation:
+    - - "meta_out":
+            type: map
+            description: "meta_out"
+      - "annotation.${meta.id}_expressed.tsv":
+            type: file
+            description: "annotation.${meta.id}_expressed.tsv"
+  log:
+    - "${meta.id}_expressed.filter.txt":
+        type: file
+        description: "${meta.id}_expressed.filter.txt"
+  expressed_tx:
+    - "${meta.id}_expressed.de_eligible_tx.txt":
+        type: file
+        description: "${meta.id}_expressed.de_eligible_tx.txt"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

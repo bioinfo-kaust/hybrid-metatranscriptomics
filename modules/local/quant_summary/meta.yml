@@ -1,0 +1,30 @@
+name: "quant_summary"
+description: "Per-sample salmon mapping rates; fails the run when a library maps below --min_mapping_rate."
+keywords:
+  - quant
+  - summary
+  - transcriptomics
+tools:
+  - "python":
+      description: "python"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - "quants":
+      type: file
+      description: "quants"
+output:
+  table:
+    - "mapping_rates.tsv":
+        type: file
+        description: "mapping_rates.tsv"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

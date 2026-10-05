@@ -1,0 +1,61 @@
+name: "novel_vs_ref"
+description: "What this source ADDS to a reference set."
+keywords:
+  - novel
+  - vs
+  - ref
+tools:
+  - "minimap2":
+      description: "minimap2"
+      licence: []
+  - "samtools":
+      description: "samtools"
+      licence: []
+  - "seqkit":
+      description: "seqkit"
+      licence: []
+  - "python":
+      description: "python"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - - "meta":
+          type: map
+          description: "meta"
+    - "query":
+          type: file
+          description: "query"
+  - - "meta2":
+          type: map
+          description: "meta2"
+    - "reference":
+          type: file
+          description: "reference"
+  - "identity":
+      type: string
+      description: "identity"
+  - "prefix":
+      type: string
+      description: "prefix"
+output:
+  fasta:
+    - - "meta":
+            type: map
+            description: "meta"
+      - "${meta.id}.novel.fasta":
+            type: file
+            description: "${meta.id}.novel.fasta"
+  log:
+    - "${meta.id}.novelty.log":
+        type: file
+        description: "${meta.id}.novelty.log"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

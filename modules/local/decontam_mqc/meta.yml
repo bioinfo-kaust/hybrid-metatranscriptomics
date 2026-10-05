@@ -1,0 +1,30 @@
+name: "decontam_mqc"
+description: "Per-sample decontamination table -> a MultiQC custom-content bargraph."
+keywords:
+  - decontam
+  - mqc
+  - transcriptomics
+tools:
+  - "python":
+      description: "python"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - "table":
+      type: file
+      description: "table"
+output:
+  mqc:
+    - "decontam_mqc.tsv":
+        type: file
+        description: "decontam_mqc.tsv"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

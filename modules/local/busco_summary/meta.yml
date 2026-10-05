@@ -1,0 +1,36 @@
+name: "busco_summary"
+description: "The one-line completeness string from a BUSCO short summary, as <label>.busco.txt \u2014 the form the ladder table, the figures and the dashboard read."
+keywords:
+  - busco
+  - summary
+  - transcriptomics
+tools:
+  - "python":
+      description: "python"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - - "meta":
+          type: map
+          description: "meta"
+    - "summary":
+          type: file
+          description: "summary"
+output:
+  summary:
+    - - "meta":
+            type: map
+            description: "meta"
+      - "${meta.id}.busco.txt":
+            type: file
+            description: "${meta.id}.busco.txt"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

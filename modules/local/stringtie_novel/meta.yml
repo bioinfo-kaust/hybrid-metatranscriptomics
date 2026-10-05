@@ -1,0 +1,49 @@
+name: "stringtie_novel"
+description: "Keep only the merged short-read loci the long-read models missed, and give them sequence."
+keywords:
+  - stringtie
+  - novel
+  - transcriptomics
+tools:
+  - "gffread":
+      description: "gffread"
+      licence: []
+  - "seqkit":
+      description: "seqkit"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - - "meta":
+          type: map
+          description: "meta"
+    - "merged_gtf":
+          type: file
+          description: "merged_gtf"
+  - "annotated_gtf":
+      type: file
+      description: "annotated_gtf"
+  - "genome":
+      type: file
+      description: "genome"
+output:
+  fasta:
+    - - "meta":
+            type: map
+            description: "meta"
+      - "stringtie_novel.fasta":
+            type: file
+            description: "stringtie_novel.fasta"
+  novel_ids:
+    - "stringtie_novel_ids.txt":
+        type: file
+        description: "stringtie_novel_ids.txt"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

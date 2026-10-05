@@ -1,0 +1,33 @@
+name: "download_contaminant_genomes"
+description: "Contaminant genomes to subtract, from a comma-separated accession list."
+keywords:
+  - download
+  - contaminant
+  - genomes
+tools:
+  - "ncbi-datasets-cli":
+      description: "ncbi-datasets-cli"
+      licence: []
+  - "unzip":
+      description: "unzip"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - "accessions":
+      type: string
+      description: "accessions"
+output:
+  fasta:
+    - "contaminants_combined.fna":
+        type: file
+        description: "contaminants_combined.fna"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

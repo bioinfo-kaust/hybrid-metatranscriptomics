@@ -1,0 +1,36 @@
+name: "dashboard"
+description: "The interactive dashboard: one self-contained HTML file built from the run's own outputs."
+keywords:
+  - dashboard
+  - transcriptomics
+  - assembly
+tools:
+  - "python":
+      description: "python"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - "inputs":
+      type: file
+      description: "inputs"
+  - "manifest":
+      type: file
+      description: "manifest"
+  - "title":
+      type: string
+      description: "title"
+output:
+  html:
+    - "dashboard/index.html":
+        type: file
+        description: "dashboard/index.html"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

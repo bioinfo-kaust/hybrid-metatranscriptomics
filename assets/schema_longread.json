@@ -1,0 +1,38 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://raw.githubusercontent.com/bioinfo-kaust/hybrid-metatranscriptomics/main/assets/schema_longread.json",
+    "title": "bioinfo-kaust/hybrid-metatranscriptomics pipeline - params.longread_input schema",
+    "description": "Long reads (PacBio Iso-Seq / HiFi or ONT), one row per sample. The factor column named by --condition_column is optional here.",
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "sample": {
+                "type": "string",
+                "pattern": "^\\S+$",
+                "errorMessage": "Sample name must be provided and cannot contain spaces",
+                "meta": [
+                    "id"
+                ]
+            },
+            "condition": {
+                "type": "string",
+                "errorMessage": "Condition/group label. Required in --input when --condition_column is 'condition' (the default); may be empty in --assembly_input",
+                "meta": [
+                    "condition"
+                ]
+            },
+            "reads": {
+                "type": "string",
+                "format": "file-path",
+                "exists": true,
+                "pattern": "^([\\S\\s]*\\/)?[^\\s\\/]+\\.(f(ast)?q|f(ast|n)?a)(\\.gz)?$",
+                "errorMessage": "Long-read file must be provided, cannot contain spaces and must be FASTA or FASTQ (.fa/.fasta/.fna/.fq/.fastq, optionally .gz)"
+            }
+        },
+        "required": [
+            "sample",
+            "reads"
+        ]
+    }
+}

@@ -1,0 +1,41 @@
+repository_type: pipeline
+nf_core_version: "4.1.0"
+template:
+  name: hybrid-metatranscriptomics
+  org: bioinfo-kaust
+  outdir: .
+  author: BioCore Lab
+  description: Hybrid long- and short-read transcriptome assembly, annotation and differential expression for a host with symbionts
+  version: 2.0.0dev
+  is_nfcore: false
+  skip_features:
+    - igenomes
+    - fastqc
+lint:
+  # Template-shaped pipeline, not an nf-core release: no nf-core branding or community files.
+  files_exist:
+    - CODE_OF_CONDUCT.md
+    - assets/nf-core-hybrid-metatranscriptomics_logo_light.png
+    - docs/images/nf-core-hybrid-metatranscriptomics_logo_light.png
+    - docs/images/nf-core-hybrid-metatranscriptomics_logo_dark.png
+    - docs/CONTRIBUTING.md
+    - conf/test_full.config
+    - conf/igenomes.config
+    - conf/igenomes_ignored.config
+  nextflow_config:
+    - manifest.name
+    - manifest.homePage
+  files_unchanged:
+    - .github/ISSUE_TEMPLATE/bug_report.yml
+    - .github/ISSUE_TEMPLATE/config.yml
+    - .github/ISSUE_TEMPLATE/feature_request.yml
+    - .github/workflows/branch.yml
+    - assets/email_template.html
+    - assets/email_template.txt
+    - assets/sendmail_template.txt
+    - .gitignore
+  multiqc_config:
+    - report_comment
+  # Per-platform container configs need a Wave lookup for every module; containers are pinned in
+  # each module instead.
+  container_configs: false

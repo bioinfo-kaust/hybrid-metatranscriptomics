@@ -1,0 +1,39 @@
+name: "filter_gtf_by_ids"
+description: "Restrict a GTF to the transcripts named in an id list."
+keywords:
+  - filter
+  - gtf
+  - by
+tools:
+  - "python":
+      description: "python"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - - "meta":
+          type: map
+          description: "meta"
+    - "gtf":
+          type: file
+          description: "gtf"
+  - "ids":
+      type: file
+      description: "ids"
+output:
+  gtf:
+    - - "meta":
+            type: map
+            description: "meta"
+      - "${meta.id}.audited.gtf":
+            type: file
+            description: "${meta.id}.audited.gtf"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

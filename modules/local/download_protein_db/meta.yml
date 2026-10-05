@@ -1,0 +1,36 @@
+name: "download_protein_db"
+description: "A protein FASTA for DIAMOND (Swiss-Prot, a specialist set, or anything else)."
+keywords:
+  - download
+  - protein
+  - db
+tools:
+  - "curl":
+      description: "curl"
+      licence: []
+  - "gzip":
+      description: "gzip"
+      licence: []
+input:
+  - - "meta":
+          type: map
+          description: "meta"
+    - "url":
+          type: string
+          description: "url"
+output:
+  fasta:
+    - - "meta":
+            type: map
+            description: "meta"
+      - "${meta.id}.fasta.gz":
+            type: file
+            description: "${meta.id}.fasta.gz"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

@@ -1,0 +1,53 @@
+name: "build_decon_index"
+description: "Stage 2 \u2014 remove contaminant (e.g."
+keywords:
+  - build
+  - decon
+  - index
+tools:
+  - "minimap2":
+      description: "minimap2"
+      licence: []
+  - "samtools":
+      description: "samtools"
+      licence: []
+  - "seqkit":
+      description: "seqkit"
+      licence: []
+  - "python":
+      description: "python"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - "genome":
+      type: file
+      description: "genome"
+  - "contaminants":
+      type: file
+      description: "contaminants"
+  - "contaminant_prefix":
+      type: string
+      description: "contaminant_prefix"
+output:
+  fasta:
+    - "host_plus_contam.fna":
+        type: file
+        description: "host_plus_contam.fna"
+  index:
+    - "host_plus_contam.sr.mmi":
+        type: file
+        description: "host_plus_contam.sr.mmi"
+  log:
+    - "decon_index.log":
+        type: file
+        description: "decon_index.log"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

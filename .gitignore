@@ -7,13 +7,26 @@ results*/
 ._*
 __pycache__/
 *.pyc
-local/
+/local/
 
 # not part of the workflow: AI-assistant files, planning notes, project run logs
 CLAUDE.md
 CLAUDE.local.md
 .claude/
-docs/
+# private notes; the nf-core docs (usage, output) are part of the pipeline
+/docs/*
+!/docs/README.md
+!/docs/usage.md
+!/docs/output.md
+!/docs/images/
 *.plan.md
 plans.md
 notes/
+
+# nf-core template
+testing/
+testing*
+null/
+.lineage/
+.nf-test/
+.nf-test.log

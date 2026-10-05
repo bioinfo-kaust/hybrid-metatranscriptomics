@@ -1,0 +1,67 @@
+name: "deseq2"
+description: "Differential expression with DESeq2 on tximport-aggregated salmon counts."
+keywords:
+  - deseq2
+  - transcriptomics
+  - assembly
+tools:
+  - "bioconductor-deseq2":
+      description: "bioconductor-deseq2"
+      licence: []
+  - "bioconductor-tximport":
+      description: "bioconductor-tximport"
+      licence: []
+  - "bioconductor-apeglm":
+      description: "bioconductor-apeglm"
+      licence: []
+  - "r-ashr":
+      description: "r-ashr"
+      licence: []
+  - "bioconductor-clusterprofiler":
+      description: "bioconductor-clusterprofiler"
+      licence: []
+  - "bioconductor-go.db":
+      description: "bioconductor-go.db"
+      licence: []
+  - "r-ggplot2":
+      description: "r-ggplot2"
+      licence: []
+input:
+  - "quants":
+      type: file
+      description: "quants"
+  - - "meta":
+          type: map
+          description: "meta"
+    - "tx2gene":
+          type: file
+          description: "tx2gene"
+  - "samplesheet":
+      type: file
+      description: "samplesheet"
+  - "contrasts":
+      type: file
+      description: "contrasts"
+  - "expressed_tx":
+      type: file
+      description: "expressed_tx"
+output:
+  results:
+    - - "meta":
+            type: map
+            description: "meta"
+      - "dge_${meta.id}":
+            type: file
+            description: "dge_${meta.id}"
+  summary:
+    - "dge_${meta.id}/DE_summary.csv":
+        type: file
+        description: "dge_${meta.id}/DE_summary.csv"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

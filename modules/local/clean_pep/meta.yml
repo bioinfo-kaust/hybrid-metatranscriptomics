@@ -1,0 +1,36 @@
+name: "clean_pep"
+description: "TransDecoder marks stop codons with '*', which several downstream tools reject."
+keywords:
+  - clean
+  - pep
+  - transcriptomics
+tools:
+  - "python":
+      description: "python"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - - "meta":
+          type: map
+          description: "meta"
+    - "pep":
+          type: file
+          description: "pep"
+output:
+  pep:
+    - - "meta":
+            type: map
+            description: "meta"
+      - "${meta.id}.clean.pep":
+            type: file
+            description: "${meta.id}.clean.pep"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

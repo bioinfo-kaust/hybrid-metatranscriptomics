@@ -1,0 +1,36 @@
+name: "aggregate_tsv"
+description: "Concatenate per-sample tables into one, keeping the first file's header."
+keywords:
+  - aggregate
+  - tsv
+  - transcriptomics
+tools:
+  - "python":
+      description: "python"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - - "name":
+          type: string
+          description: "name"
+    - "tables":
+          type: file
+          description: "tables"
+output:
+  table:
+    - - "name":
+            type: string
+            description: "name"
+      - "${name}.tsv":
+            type: file
+            description: "${name}.tsv"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

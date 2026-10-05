@@ -1,0 +1,76 @@
+name: "decontam_long"
+description: "Long reads: spliced alignment to the host genome and to the contaminant set, then the best-residue-match classifier."
+keywords:
+  - decontam
+  - long
+  - transcriptomics
+tools:
+  - "minimap2":
+      description: "minimap2"
+      licence: []
+  - "samtools":
+      description: "samtools"
+      licence: []
+  - "seqkit":
+      description: "seqkit"
+      licence: []
+  - "python":
+      description: "python"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - - "meta":
+          type: map
+          description: "meta"
+    - "seqs":
+          type: file
+          description: "seqs"
+  - "genome":
+      type: file
+      description: "genome"
+  - "contaminants":
+      type: file
+      description: "contaminants"
+  - "membership":
+      type: file
+      description: "membership"
+  - "rrna_hits":
+      type: file
+      description: "rrna_hits"
+  - "conditions":
+      type: file
+      description: "conditions"
+output:
+  seqs:
+    - - "meta":
+            type: map
+            description: "meta"
+      - "${meta.id}.hostonly.fasta":
+            type: file
+            description: "${meta.id}.hostonly.fasta"
+  removed:
+    - "${meta.id}.contaminant_removed.fasta":
+        type: file
+        description: "${meta.id}.contaminant_removed.fasta"
+  summary:
+    - "${meta.id}.longread_decontam.tsv":
+        type: file
+        description: "${meta.id}.longread_decontam.tsv"
+  classification:
+    - "${meta.id}.classification.tsv":
+        type: file
+        description: "${meta.id}.classification.tsv"
+  per_sample:
+    - "longread_decontam_per_sample.tsv":
+        type: file
+        description: "longread_decontam_per_sample.tsv"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

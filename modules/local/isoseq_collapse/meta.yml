@@ -1,0 +1,57 @@
+name: "isoseq_collapse"
+description: "Route A: collapse the genome-aligned long reads into isoform models."
+keywords:
+  - isoseq
+  - collapse
+  - transcriptomics
+tools:
+  - "isoseq":
+      description: "isoseq"
+      licence: []
+  - "seqkit":
+      description: "seqkit"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - - "meta":
+          type: map
+          description: "meta"
+    - "bam":
+          type: file
+          description: "bam"
+output:
+  gff:
+    - - "meta":
+            type: map
+            description: "meta"
+      - "collapsed.gff":
+            type: file
+            description: "collapsed.gff"
+  gtf:
+    - - "meta":
+            type: map
+            description: "meta"
+      - "collapsed.gtf":
+            type: file
+            description: "collapsed.gtf"
+  fasta:
+    - - "meta":
+            type: map
+            description: "meta"
+      - "collapsed.fasta":
+            type: file
+            description: "collapsed.fasta"
+  stats:
+    - "collapsed.stats.tsv":
+        type: file
+        description: "collapsed.stats.tsv"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

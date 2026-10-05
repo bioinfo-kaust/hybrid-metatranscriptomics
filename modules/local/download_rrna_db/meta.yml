@@ -1,0 +1,33 @@
+name: "download_rrna_db"
+description: "rRNA reference for k-mer depletion."
+keywords:
+  - download
+  - rrna
+  - db
+tools:
+  - "curl":
+      description: "curl"
+      licence: []
+  - "gzip":
+      description: "gzip"
+      licence: []
+input:
+  - "base_url":
+      type: string
+      description: "base_url"
+  - "sets":
+      type: string
+      description: "sets"
+output:
+  fasta:
+    - "rrna_db.fasta":
+        type: file
+        description: "rrna_db.fasta"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

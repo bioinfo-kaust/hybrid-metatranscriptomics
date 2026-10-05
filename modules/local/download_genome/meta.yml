@@ -1,0 +1,36 @@
+name: "download_genome"
+description: "Host genome from NCBI by accession."
+keywords:
+  - download
+  - genome
+  - transcriptomics
+tools:
+  - "ncbi-datasets-cli":
+      description: "ncbi-datasets-cli"
+      licence: []
+  - "unzip":
+      description: "unzip"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - "accession":
+      type: string
+      description: "accession"
+  - "name":
+      type: string
+      description: "name"
+output:
+  fasta:
+    - "${name}.fna":
+        type: file
+        description: "${name}.fna"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

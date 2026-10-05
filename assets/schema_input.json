@@ -1,0 +1,53 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://raw.githubusercontent.com/bioinfo-kaust/hybrid-metatranscriptomics/main/assets/schema_input.json",
+    "title": "bioinfo-kaust/hybrid-metatranscriptomics pipeline - params.input / params.assembly_input schema",
+    "description": "Paired-end short reads, one row per lane. Rows sharing a sample name are merged. The factor column named by --condition_column (default 'condition') is required in --input and ignored in --assembly_input.",
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "sample": {
+                "type": "string",
+                "pattern": "^\\S+$",
+                "errorMessage": "Sample name must be provided and cannot contain spaces",
+                "meta": [
+                    "id"
+                ]
+            },
+            "condition": {
+                "type": "string",
+                "errorMessage": "Condition/group label. Required in --input when --condition_column is 'condition' (the default); may be empty in --assembly_input",
+                "meta": [
+                    "condition"
+                ]
+            },
+            "replicate": {
+                "type": "string",
+                "errorMessage": "Replicate label (optional)",
+                "meta": [
+                    "replicate"
+                ]
+            },
+            "fastq_1": {
+                "type": "string",
+                "format": "file-path",
+                "exists": true,
+                "pattern": "^([\\S\\s]*\\/)?[^\\s\\/]+\\.f(ast)?q\\.gz$",
+                "errorMessage": "FastQ file for reads 1 must be provided, cannot contain spaces and must have extension '.fq.gz' or '.fastq.gz'"
+            },
+            "fastq_2": {
+                "type": "string",
+                "format": "file-path",
+                "exists": true,
+                "pattern": "^([\\S\\s]*\\/)?[^\\s\\/]+\\.f(ast)?q\\.gz$",
+                "errorMessage": "FastQ file for reads 2 must be provided (this pipeline is paired-end), cannot contain spaces and must have extension '.fq.gz' or '.fastq.gz'"
+            }
+        },
+        "required": [
+            "sample",
+            "fastq_1",
+            "fastq_2"
+        ]
+    }
+}

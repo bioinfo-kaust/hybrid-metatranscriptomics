@@ -5,6 +5,11 @@ the plain-text version; both name the files their numbers come from. `<set>` bel
 the reference ladder (`isoseq` … `all_sources_dedup`, and `<dge_reference>_expressed` after the
 expression filter); `<sample>` is a library from `--input` or `--assembly_input`.
 
+The expression filter runs **before** the annotation, so `<dge_reference>_expressed` is the set the
+annotation, the published quantification, DESeq2, enrichment and the figures all describe. The
+ladder's own FASTAs, seqkit stats and BUSCO summaries still cover every rung, so the transcript
+count and the completeness quoted for the assembly describe the larger, unfiltered set.
+
 Directories for steps that did not run (a missing genome, no contaminant genomes, `--skip_*`) are
 simply absent.
 
@@ -56,12 +61,14 @@ host-only long reads, and `audit/` — the residual-contamination audit of each 
 
 | Path | Content |
 | --- | --- |
-| `<set>.fasta` | One FASTA per ladder rung; `<dge_reference>_expressed.fasta` is what is quantified and tested |
+| `<set>.fasta` | One FASTA per ladder rung; `<dge_reference>_expressed.fasta` is what is annotated, quantified and tested |
 | `tx2gene.<set>.tsv` | String-stripped gene map (an upper bound on distinct loci) |
 | `tx2gene.<set>_locus.tsv`, `locus_rebuild_report.txt` | Genomic-locus gene map and its validation |
 | `tx2gene.<set>_corset.tsv` | Corset read-sharing gene map |
 | `annotation.<set>[_locus\|_corset].tsv` | The annotation re-keyed to each gene map |
-| `<set>.filter.txt`, `<set>.de_eligible_tx.txt` | Expression-filter log and the transcripts it kept |
+| `<set>[_locus].genes.fasta`, `.genes.pep` | One representative sequence per gene of that map: its longest transcript, and the longest ORF on any of its transcripts |
+| `<set>[_locus].gene_rep.tsv` | Which transcript and ORF represents each gene, with its transcript count (`rep_orf = NA` when the gene has no ORF) |
+| `<set>.filter.txt`, `<set>.de_eligible_tx.txt` | Expression-filter log and the transcripts it kept (the analysed set) |
 | `qc/<set>.stats.tsv` | seqkit statistics per rung |
 | `qc/<set>.busco.txt`, `qc/short_summary.*`, `qc/*-busco.batch_summary.txt` | BUSCO per rung (`NA` when BUSCO failed) |
 | `qc/route_contribution.tsv` | What each assembly source added to the ladder |
@@ -74,10 +81,15 @@ host-only long reads, and `audit/` — the residual-contamination audit of each 
 `<set>.transdecoder.{gff3,bed}`; the raw searches in `diamond/diamond_<db>.tsv`,
 `eggnog/eggnog.emapper.annotations` and `interproscan/interpro.tsv`.
 
+`<set>` here is `<dge_reference>_expressed`: the annotation covers the transcripts the experiment
+expressed, the same ones the DE tables are keyed on. Unexpressed gene models from the assembly are
+not annotated, so this table is not a catalogue of everything the species encodes.
+
 ## Quantification — `quantification/`
 
 `<sample>/` is salmon's output (`quant.sf`, `aux_info/` with the equivalence classes, bootstraps)
-for the DE reference; `mapping_rates.tsv`; Corset's clusters and counts (`corset_<set>/`,
+for the analysed set; the pre-filter pass that only produced TPMs for the filter is not published.
+`mapping_rates.tsv`; Corset's clusters and counts (`corset_<set>/`,
 `<set>_corset.summary.txt`).
 
 ## Differential expression

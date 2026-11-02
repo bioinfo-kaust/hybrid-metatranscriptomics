@@ -129,8 +129,8 @@ line([(60, yD), (106, yS2), (1110, yS2)], C["asm"], dash="10 6")
 line([(800, yS2), (860, yD2), (1000, yD2)], C["asm"], dash="10 6")
 # transcriptome after the ladder
 line([(1320, yT), (1700, yT), (1700, yM)], C["tx"])
-# annotation branch
-line([(1700, yM), (1700, yAn), (1000, yAn)], C["ann"])
+# annotation branch, taken AFTER the expression filter: what is annotated is what is tested
+line([(1620, yM), (1620, yAn), (1000, yAn)], C["ann"])
 # quantification & DE main line
 line([(1700, yM), (860, yM)], C["de"])
 # gene maps
@@ -185,7 +185,8 @@ terminus(1700, yT, C["tx"])
 below(1688, yT, "Reference transcriptome", "selected rung", anchor="end")
 
 # ---- 6 quantification & annotation
-station(1620, yM);    below(1620, yM, "Expression filter", "TPM ≥ 1 in ≥ 3", ["--expr_filter_tpm"])
+station(1620, yM);    below(1620, yM, "Expression filter", "TPM ≥ 1 in ≥ 3 · the analysed set",
+                            ["--expr_filter_tpm"])
 station(1500, yM);    above(1512, yM, "salmon", "decoy-aware quant", anchor="start")
 station(1320, yN);    below(1320, yN, "Gene maps", "locus · tx2gene · Corset",
                             ["--dge_primary_map", "--skip_corset"])

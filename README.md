@@ -3,7 +3,8 @@
 A Nextflow (DSL2) workflow (`hybrid-metatranscriptomics`), laid out on the
 [nf-core](https://nf-co.re) template, that builds a **host-only reference
 transcriptome from long + short reads**, with contaminant reads (e.g. symbiont) removed **before**
-anything is assembled, then annotates it, quantifies it and tests it for differential expression.
+anything is assembled. The assembled set is then cut to the transcripts the experiment actually
+expressed, and that set is annotated, quantified and tested for differential expression.
 
 It was developed for a *Cassiopea andromeda* UV-radiation experiment (a jellyfish holobiont with
 Symbiodiniaceae symbionts). Every value that describes that experiment — the species, the
@@ -174,13 +175,14 @@ results_nf/
 ├── assembly/                    per-route assemblies (Iso-Seq, StringTie, Trinity, reference-free)
 ├── transcriptome/
 │   ├── isoseq.fasta … all_sources_dedup.fasta   ← the reference ladder, one FASTA per rung
-│   ├── all_sources_dedup_expressed.fasta         ← the quantification (DE) reference
+│   ├── all_sources_dedup_expressed.fasta         ← the analysed set: annotated, quantified, tested
 │   ├── tx2gene.<set>.tsv          ← string-stripped map (an UPPER BOUND on distinct loci)
 │   ├── tx2gene.<set>_locus.tsv    ← genomic-locus map, the default primary map (see §6)
 │   ├── tx2gene.<set>_corset.tsv   ← Corset read-sharing map (see §6)
 │   ├── locus_rebuild_report.txt
 │   └── qc/  BUSCO and stats for every rung
 ├── annotation/                  annotation.<set>.tsv (+ summary), peptides, CDS, raw searches
+│                                (<set> = the expression-filtered set, as in the DE tables)
 ├── quantification/              per-sample salmon output, mapping_rates.tsv, Corset output
 ├── dge/ dge_locus/ dge_corset/  DESeq2 results per contrast + DE_summary.csv, one per gene map
 ├── enrichment/ enrichment_locus/ enrichment_corset/
@@ -301,8 +303,11 @@ jobs. Concretely, in this pipeline that means
 * BUSCO scores all six reference variants simultaneously, and the locus rebuild runs beside DESeq2.
 
 The real serialisation points are the ones the biology imposes: the combined index before
-per-sample decontamination, the ladder (each rung needs the one below it), and the reference
-before quantification. `executor.queueSize` (64 in `conf/hpc.config`) caps how many jobs are
+per-sample decontamination, the ladder (each rung needs the one below it), and the expression
+filter, which sits between the ladder and everything that reports a number — one salmon pass over
+the unfiltered tip, then the filter, then the annotation and the reported quantification side by
+side. That ordering starts the annotation later than a parallel layout would, and runs it on
+roughly a third of the transcripts, so the longest annotation job (InterProScan) shrinks with it. `executor.queueSize` (64 in `conf/hpc.config`) caps how many jobs are
 queued at once.
 
 Resources are **set per process from measured need**, not from one generic tier — a 250 GB request
@@ -393,8 +398,9 @@ novel, and that coverage measured on our transcript penalises short de novo frag
 main.nf                     entry point (nf-core template): initialise, run, complete
 workflows/                  hybridmetatranscriptomics.nf, the pipeline body
 subworkflows/local/         prepare_references, short_read_preprocess, long_read_preprocess,
-                            build_transcriptome, transcriptome_busco, annotate,
-                            quantify_and_dge, and utils_* (samplesheet parsing, input checks)
+                            build_transcriptome, transcriptome_busco, expression_filter,
+                            annotate, quantify_and_dge, and utils_* (samplesheet parsing,
+                            input checks)
 subworkflows/nf-core/       template utilities (nf-schema, completion email/summary)
 modules/nf-core/            community modules (fastp, bbduk, STAR, StringTie, Trinity, salmon,
                             BUSCO, DIAMOND, eggNOG-mapper, InterProScan, MultiQC, …); modules.json

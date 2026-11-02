@@ -1,0 +1,59 @@
+name: "gene_fasta"
+description: "One representative sequence per gene, for a given transcript->gene map."
+keywords:
+  - gene
+  - fasta
+  - transcriptomics
+tools:
+  - "python":
+      description: "python"
+      licence: []
+  - "gawk":
+      description: "gawk"
+      licence: []
+input:
+  - - "meta":
+          type: map
+          description: "meta"
+    - "tx2gene":
+          type: file
+          description: "tx2gene"
+  - - "meta2":
+          type: map
+          description: "meta2"
+    - "fasta":
+          type: file
+          description: "fasta"
+  - "pep":
+      type: file
+      description: "TransDecoder peptides, or the NO_FILE_PEP sentinel"
+output:
+  fasta:
+    - - "meta":
+            type: map
+            description: "meta"
+      - "${meta.id}.genes.fasta":
+            type: file
+            description: "${meta.id}.genes.fasta"
+  pep:
+    - - "meta":
+            type: map
+            description: "meta"
+      - "${meta.id}.genes.pep":
+            type: file
+            description: "${meta.id}.genes.pep"
+  table:
+    - - "meta":
+            type: map
+            description: "meta"
+      - "${meta.id}.gene_rep.tsv":
+            type: file
+            description: "${meta.id}.gene_rep.tsv"
+  versions:
+    - "versions.yml":
+        type: file
+        description: "versions.yml"
+authors:
+  - "@bioinfo-kaust"
+maintainers:
+  - "@bioinfo-kaust"

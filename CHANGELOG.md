@@ -5,8 +5,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] - 2.0.0dev
 
-The pipeline now follows the nf-core template. The analysis — every step, argument and
-threshold — is unchanged; what changes is how it is laid out, configured and provisioned.
+The pipeline now follows the nf-core template: most of what changes is how it is laid out,
+configured and provisioned, with every step, argument and threshold carried over. The one
+exception is the order of the expression filter and the annotation, which does change what is
+analysed and is listed under **Changed** below.
 
 ### Added
 
@@ -22,12 +24,38 @@ threshold — is unchanged; what changes is how it is laid out, configured and p
   modules use Seqera Containers built from their `environment.yml`
 - Samplesheet schemas (`assets/schema_input.json`, `assets/schema_longread.json`): columns and
   file existence are checked at start-up
+- `GENE_FASTA`: a gene-level FASTA (`<set>.genes.fasta`) and peptide file (`.genes.pep`) for the
+  string-stripped and the genomic-locus gene map, plus `<set>.gene_rep.tsv` naming each gene's
+  representative. A gene map alone leaves a gene as a sum of counts with no sequence to BLAST,
+  score in protein mode or attach to a paper; the representative is the longest transcript of the
+  gene, and for the peptide the longest ORF on any of its transcripts
 - `--interproscan_db`: an InterProScan `data/` directory (default: the installation's own)
 - `--slurm_account`, `--slurm_partition`, `--slurm_extra` declared in the schema (used by `-profile hpc`)
 - `assets/test/contaminant.fa`, so `-profile test` can exercise decontamination
 
 ### Changed
 
+- **The expression filter now runs before the annotation, and defines the analysed set.** The
+  order was ladder → annotate the full deduplicated set → salmon pass 1 → filter → salmon pass 2
+  → DE; it is now ladder → salmon pass 1 → filter → annotate the filtered set → salmon pass 2 →
+  DE. The annotation, the published quantification, DESeq2, enrichment and the figures therefore
+  all describe one set of transcripts (on the Cassiopea run: 44,454 expressed, from 149,385 in
+  `all_sources_dedup`), so an annotation count and a DE count are comparable without a footnote.
+  Consequences: `annotation.<dge_reference>.tsv` becomes
+  `annotation.<dge_reference>_expressed.tsv` and no longer carries rows for transcripts the
+  experiment did not express, so it is not a catalogue of everything the species encodes; the
+  annotation searches (TransDecoder, DIAMOND, eggNOG-mapper, InterProScan) run on roughly a third
+  of the transcripts and start later, after the filter. The ASSEMBLY is untouched: every ladder
+  rung still publishes its own FASTA, seqkit stats and BUSCO summary, so the transcript count and
+  the completeness quoted for the transcriptome remain properties of the full deduplicated set.
+  What this does NOT change: the DE reference, the quantification and the DESeq2 results, because
+  the old filter already cut the annotation table to the kept transcripts (44,454 rows) before
+  enrichment saw it. The homology searches are per query, so their hits are unaffected; the one
+  genuine difference is that TransDecoder trains its coding-likelihood model on the set it is
+  given, so a small number of ORF calls — and the GO terms that follow from them — can move
+- New subworkflow `subworkflows/local/expression_filter` holds salmon pass 1 and the filter; the
+  pre-filter pass is no longer published (it only feeds the filter), so `quantification/` now
+  holds one quant.sf per sample instead of the second pass overwriting the first
 - **Parameters renamed:** `--samplesheet` → `--input`, `--longread_samplesheet` →
   `--longread_input`, `--assembly_samplesheet` → `--assembly_input`
 - `--outdir` is required (no default)
@@ -50,6 +78,12 @@ threshold — is unchanged; what changes is how it is laid out, configured and p
 
 ### Removed
 
+- `--expr_filter_rescue` (the ORF+homology second way into the DE reference). It needed the
+  annotation to decide what to keep, which is no longer available when the filter runs, and it had
+  already been measured on this dataset as buying nothing: 0 DE genes gained, +0.127 pts of
+  mapping rate spread evenly over all 15 libraries, and a worse reference where it counts (56,599
+  tx at C:72.1% S:45.5% D:26.6% with it, against 48,224 tx at C:70.6% S:48.2% D:22.4% without).
+  Expression alone gives the highest single-copy BUSCO fraction of any reference in the ladder
 - `--trinity_max_memory` (see above), `--max_cpus`, `--max_memory`, `--max_time`, `--tracedir`
 - `params.conda_pkg`, `--use_conda_pkgs` and `conf/conda.config`: `-profile conda` uses each
   module's `environment.yml`

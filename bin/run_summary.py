@@ -176,20 +176,13 @@ def dump(title, pattern, note=None):
         L.append(f"  NOTE: {note}")
 
 
-# filter_by_expression.py prints the "rescued by ORF+hom" line only when --rescue-annotated is on,
-# so the report itself says which note applies.
-_filt = sorted(_g.glob(os.path.join(args.dir, "*_expressed.filter.txt")))
-_rescue_on = bool(_filt) and "rescued by ORF+hom" in open(_filt[0]).read()
-dump("Reference: expression filter", "*_expressed.filter.txt",
-     "this cuts the reference for QUANTIFICATION AND TESTING, not the assembly. The ladder above\n"
-     "        describes the set it came from, and that set is what the annotation and the reported\n"
-     "        BUSCO completeness are measured on -- a dropped transcript keeps its annotation row.\n"
-     + ("        The ORF+homology rescue is ON: rescued transcripts are quantified but not\n"
-        "        testable. DE and ORA run on genes with >=1 expressed transcript, which keep the\n"
-        "        counts of their rescued isoforms."
-        if _rescue_on else
-        "        The ORF+homology rescue is off, so the quantified set and the DE-eligible set are\n"
-        "        the same transcripts."))
+# The filter decides the analysed set, so this note has to be read before any count below it.
+dump("Reference: the expression filter", "*_expressed.filter.txt",
+     "this is the set that was ANNOTATED, quantified and tested. Everything after this section\n"
+     "        describes it and nothing else. What the filter does not touch is the assembly: the\n"
+     "        ladder above keeps its own transcript counts and BUSCO completeness, measured on the\n"
+     "        full deduplicated set, so those two numbers describe more transcripts than any other\n"
+     "        number in this report.")
 dump("Long-read models: SQANTI3 structural categories", "sqanti3_*.summary.txt",
      "FSM/ISM are supported by the short-read annotation; NNC and antisense are the ones to check.")
 dump("Gene identity — Corset (read sharing)", "*_corset.summary.txt",

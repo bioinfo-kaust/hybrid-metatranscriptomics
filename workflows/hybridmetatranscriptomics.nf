@@ -8,6 +8,7 @@ include { SHORT_READ_PREPROCESS                             } from '../subworkfl
 include { SHORT_READ_PREPROCESS as ASSEMBLY_READ_PREPROCESS } from '../subworkflows/local/short_read_preprocess'
 include { LONG_READ_PREPROCESS                              } from '../subworkflows/local/long_read_preprocess'
 include { BUILD_TRANSCRIPTOME                               } from '../subworkflows/local/build_transcriptome'
+include { EXPRESSION_FILTER                                 } from '../subworkflows/local/expression_filter'
 include { ANNOTATE                                          } from '../subworkflows/local/annotate'
 include { QUANTIFY_AND_DGE                                  } from '../subworkflows/local/quantify_and_dge'
 include { BUILD_DECON_INDEX                                 } from '../modules/local/build_decon_index'
@@ -46,11 +47,16 @@ workflow HYBRIDMETATRANSCRIPTOMICS {
     def ch_versions      = channel.empty()
     def ch_multiqc_files = channel.empty()
 
+    def expr_rule = params.expr_filter_tpm > 0
+        ? "TPM >= ${params.expr_filter_tpm} in >= ${params.expr_filter_samples} libraries"
+        : 'off (the whole set is annotated and tested)'
     log.info """
     ------------------------------------------------------------------
-     reference set for quantification : ${params.dge_reference}
-     design                           : ${params.design}   (baseline ${params.reference_level ?: 'first level'})
-     outdir                           : ${outdir}
+     assembled reference set : ${params.dge_reference}
+     expression filter       : ${expr_rule}
+                               annotation, DGE and enrichment all run on what it keeps
+     design                  : ${params.design}   (baseline ${params.reference_level ?: 'first level'})
+     outdir                  : ${outdir}
     ------------------------------------------------------------------
     """.stripIndent()
 
@@ -110,22 +116,59 @@ workflow HYBRIDMETATRANSCRIPTOMICS {
                         PREPARE_REFERENCES.out.star_index)
     ch_multiqc_files = ch_multiqc_files.mix(BUILD_TRANSCRIPTOME.out.qc)
 
+    // ------------------------------------------------------------------ stage 3b expression filter
+    /*
+     * The analysed set is decided here, before anything is annotated or tested. The ladder tip is
+     * a cross-source union with no expression evidence applied at any rung, so one salmon pass
+     * measures what the experiment actually saw and the reference is cut to the survivors; every
+     * step after this — annotation, quantification, DE, enrichment, figures, reports — describes
+     * that same set, so no number has to be qualified with which reference it came from.
+     *
+     * The ASSEMBLY is untouched: BUILD_TRANSCRIPTOME publishes every rung with its own seqkit and
+     * BUSCO numbers, so the completeness quoted for the transcriptome is still a property of the
+     * full deduplicated set. EXPRESSION_FILTER adds the same two measurements for the filtered set.
+     *
+     * expr_filter_tpm = 0 switches the filter off: the ladder tip itself is annotated and tested,
+     * and the run has one salmon pass either way.
+     */
+    ch_ref_fasta   = BUILD_TRANSCRIPTOME.out.selected
+    ch_ref_tx2gene = BUILD_TRANSCRIPTOME.out.selected_tx2gene
+    ch_expr_log    = channel.empty()
+    ch_expr_qc     = channel.empty()
+    // no filter -> every gene in the reference is DE-eligible, signalled by the sentinel
+    ch_expr_tx     = channel.value(file("${projectDir}/assets/NO_FILE_EXPRTX", checkIfExists: true))
+    if (params.expr_filter_tpm > 0) {
+        EXPRESSION_FILTER(ch_reads, ch_ref_fasta, ch_ref_tx2gene, PREPARE_REFERENCES.out.genome)
+        ch_ref_fasta   = EXPRESSION_FILTER.out.fasta
+        ch_ref_tx2gene = EXPRESSION_FILTER.out.tx2gene
+        ch_expr_log    = EXPRESSION_FILTER.out.filter_log
+        ch_expr_qc     = EXPRESSION_FILTER.out.qc
+        // the reference IS the expressed set, so this restriction is an identity; it stays wired
+        // so that a second way into the reference cannot silently widen what gets tested
+        ch_expr_tx     = EXPRESSION_FILTER.out.expressed_tx.first()
+    }
+
     // ------------------------------------------------------------------ stage 4 annotation
     ch_annotation  = channel.empty()
     ch_ann_summary = channel.empty()
+    // no annotation -> the gene-level FASTA is nucleotide only, signalled by the sentinel
+    ch_pep         = channel.value(file("${projectDir}/assets/NO_FILE_PEP", checkIfExists: true))
     if (!params.skip_annotation) {
-        ANNOTATE(BUILD_TRANSCRIPTOME.out.selected,
-                 BUILD_TRANSCRIPTOME.out.selected_tx2gene,
+        ANNOTATE(ch_ref_fasta,
+                 ch_ref_tx2gene,
                  PREPARE_REFERENCES.out.diamond_dbs)
         ch_annotation  = ANNOTATE.out.table
         ch_ann_summary = ANNOTATE.out.summary
+        ch_pep         = ANNOTATE.out.pep.map { _meta, pep -> pep }.first()
     }
 
     // ------------------------------------------------------------------ stage 5+6
     QUANTIFY_AND_DGE(ch_reads,
-                     BUILD_TRANSCRIPTOME.out.selected,
-                     BUILD_TRANSCRIPTOME.out.selected_tx2gene,
+                     ch_ref_fasta,
+                     ch_ref_tx2gene,
                      ch_annotation,
+                     ch_pep,
+                     ch_expr_tx,
                      PREPARE_REFERENCES.out.genome,
                      BUILD_TRANSCRIPTOME.out.collapsed_gtf,
                      ch_sheet,
@@ -174,8 +217,8 @@ workflow HYBRIDMETATRANSCRIPTOMICS {
         .mix(QUANTIFY_AND_DGE.out.dge.map { _meta, d -> d })
         .mix(QUANTIFY_AND_DGE.out.dge_locus.map { _meta, d -> d })
         .mix(QUANTIFY_AND_DGE.out.locus_report)
-        .mix(QUANTIFY_AND_DGE.out.expr_filter)
-        .mix(QUANTIFY_AND_DGE.out.expr_qc)
+        .mix(ch_expr_log)
+        .mix(ch_expr_qc)
         .mix(QUANTIFY_AND_DGE.out.corset)
         .mix(QUANTIFY_AND_DGE.out.dge_corset.map { _meta, d -> d })
         .mix(BUILD_TRANSCRIPTOME.out.sqanti)
@@ -197,6 +240,7 @@ workflow HYBRIDMETATRANSCRIPTOMICS {
                 .mix(ch_figures)
                 .mix(ch_assembly_tables)
                 .mix(QUANTIFY_AND_DGE.out.gene_map_files)
+                .mix(QUANTIFY_AND_DGE.out.gene_rep)
                 .unique()
                 .collect(),
             channel.value(writeRunManifest(outdir)),

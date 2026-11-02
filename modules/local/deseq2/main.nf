@@ -31,8 +31,8 @@ process DESEQ2 {
     def label        = meta.id
     def contrast_arg = contrasts.name != 'NO_FILE_CONTRASTS' ? "--contrasts ${contrasts}" : ''
     // the DE-eligible set: genes with at least one transcript the experiment saw above the TPM
-    // rule. The reference itself keeps the ORF+homology rescues so they stay in the index and in
-    // the reported transcriptome; they just do not get tested. See filter_by_expression.py.
+    // rule. The reference IS that set, so this is an identity -- it stays wired as the interlock
+    // against a second route into the index. See filter_by_expression.py.
     def expr_tx_arg  = expressed_tx.name != 'NO_FILE_EXPRTX' ? "--expressed-tx ${expressed_tx}" : ''
     def ref_level    = params.reference_level ? "--reference-level ${params.reference_level}" : ''
     def rlibs        = params.r_libs ? "export R_LIBS_USER=${params.r_libs}" : ''

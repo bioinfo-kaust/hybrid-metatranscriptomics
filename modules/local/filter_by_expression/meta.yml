@@ -27,12 +27,6 @@ input:
     - "tx2gene":
           type: file
           description: "tx2gene"
-  - - "meta3":
-          type: map
-          description: "meta3"
-    - "annotation":
-          type: file
-          description: "annotation"
 output:
   fasta:
     - - "meta_out":
@@ -48,13 +42,6 @@ output:
       - "tx2gene.${meta.id}_expressed.tsv":
             type: file
             description: "tx2gene.${meta.id}_expressed.tsv"
-  annotation:
-    - - "meta_out":
-            type: map
-            description: "meta_out"
-      - "annotation.${meta.id}_expressed.tsv":
-            type: file
-            description: "annotation.${meta.id}_expressed.tsv"
   log:
     - "${meta.id}_expressed.filter.txt":
         type: file

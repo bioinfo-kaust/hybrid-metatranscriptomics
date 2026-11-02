@@ -31,7 +31,7 @@
                     "type": "string",
                     "format": "file-path",
                     "description": "Long reads that were pooled before the pipeline saw them (a polished Iso-Seq set, say) carry no per-sample identity.",
-                    "help_text": "Long reads that were pooled before the pipeline saw them (a polished Iso-Seq set, say) carry no per-sample identity. Point this at a 'sequence_id<TAB>sample' table to recover it \u2014 extra/pacbio_fl_counts_to_membership.py builds one from a PacBio FL count matrix."
+                    "help_text": "Long reads that were pooled before the pipeline saw them (a polished Iso-Seq set, say) carry no per-sample identity. Point this at a 'sequence_id<TAB>sample' table to recover it — extra/pacbio_fl_counts_to_membership.py builds one from a PacBio FL count matrix."
                 },
                 "assembly_input": {
                     "type": "string",
@@ -361,8 +361,8 @@
                 "dge_reference": {
                     "type": "string",
                     "default": "all_sources_dedup",
-                    "description": "Which ladder rung feeds quantification.",
-                    "help_text": "which ladder rung feeds quantification. Names read as the sources they contain, in the order they were layered: isoseq                           Iso-Seq models collapsed on the genome (route A) isoseq_stringtie                 + genome-guided short-read loci the long reads missed isoseq_stringtie_trinity         + de novo loci absent from the draft genome isoseq_stringtie_lrfree          + reference-free long-read loci, no Trinity isoseq_stringtie_trinity_lrfree  all four sources merged all_sources_dedup                after cross-source deduplication (vsearch, 95%) The expression filter then derives all_sources_dedup_expressed, which is what is tested.",
+                    "description": "Which ladder rung the expression filter and the analysis start from.",
+                    "help_text": "which ladder rung feeds quantification. Names read as the sources they contain, in the order they were layered: isoseq                           Iso-Seq models collapsed on the genome (route A) isoseq_stringtie                 + genome-guided short-read loci the long reads missed isoseq_stringtie_trinity         + de novo loci absent from the draft genome isoseq_stringtie_lrfree          + reference-free long-read loci, no Trinity isoseq_stringtie_trinity_lrfree  all four sources merged all_sources_dedup                after cross-source deduplication (vsearch, 95%) The expression filter then derives all_sources_dedup_expressed from the rung named here, and THAT is what is annotated, quantified and tested.",
                     "enum": [
                         "isoseq",
                         "isoseq_stringtie",
@@ -403,17 +403,14 @@
                 "expr_filter_tpm": {
                     "type": "number",
                     "default": 1,
-                    "description": "TPM a transcript must reach ."
+                    "description": "TPM a transcript must reach to stay in the analysed set (0 disables the filter).",
+                    "help_text": "The ladder applies no expression evidence at any rung, so its tip is a cross-source union carrying every near-duplicate and every unexpressed fragment. One salmon pass over that tip decides what the experiment actually saw, and the survivors become the ANALYSED set: they are what gets annotated, re-quantified, tested, enriched and plotted. expr_filter_tpm = 0 disables the filter and the ladder tip itself is analysed instead (one salmon pass either way). The rule is a PRESENCE rule, not a mean: a transcript expressed in one treatment group and absent elsewhere survives. What the filter does not touch is the assembly -- every rung keeps its own FASTA, seqkit stats and BUSCO summary, so the transcript count and the completeness quoted for the transcriptome stay properties of the full deduplicated set. There is deliberately no second route in: an earlier version could rescue a transcript on ORF + homology support, and measured on this dataset that bought 0 DE genes and +0.127 pts of mapping rate while making the reference worse where it counts (56,599 tx at C:72.1% S:45.5% D:26.6% with it, against 48,224 tx at C:70.6% S:48.2% D:22.4% without)."
                 },
                 "expr_filter_samples": {
                     "type": "integer",
                     "default": 3,
-                    "description": "."
-                },
-                "expr_filter_rescue": {
-                    "type": "boolean",
-                    "description": "Second way in: an ORF *and* homology support (protein hit or InterPro domain).",
-                    "help_text": "Second way in: an ORF *and* homology support (protein hit or InterPro domain). OFF by default, because on this dataset it was measured to buy nothing that matters: DE genes gained ................. 0 (no rescued-only gene is significant in any map) mapping rate gained ............. +0.127 pts (92.14% -> 92.27%), uniform across all 15 libraries and all three groups, so it cannot shift a contrast BUSCO of the reported assembly .. irrelevant: completeness is reported on the unfiltered ladder tip (all_sources_dedup, C:72.1%), not on the DE reference Its only real effect is on the DE reference itself, and it makes it worse: 56,599 tx at C:72.1% S:45.5% D:26.6% with the rescue, versus 48,224 tx at C:70.6% S:48.2% D:22.4% without -- 48 more complete markers bought with 144 more duplicated ones. Expression-only gives the highest single-copy fraction of any reference in the ladder. The 8,375 transcripts it would add are not discarded: ANNOTATE runs upstream of this filter, so they keep their annotation in annotation.<dge_reference>.tsv (they carry 24% of the protein hits and 34% of the UV_stress_family calls), they are simply not quantified or tested. Needs annotation when enabled."
+                    "description": "Number of libraries in which a transcript must reach expr_filter_tpm.",
+                    "help_text": "The ladder applies no expression evidence at any rung, so its tip is a cross-source union carrying every near-duplicate and every unexpressed fragment. One salmon pass over that tip decides what the experiment actually saw, and the survivors become the ANALYSED set: they are what gets annotated, re-quantified, tested, enriched and plotted. expr_filter_tpm = 0 disables the filter and the ladder tip itself is analysed instead (one salmon pass either way). The rule is a PRESENCE rule, not a mean: a transcript expressed in one treatment group and absent elsewhere survives. What the filter does not touch is the assembly -- every rung keeps its own FASTA, seqkit stats and BUSCO summary, so the transcript count and the completeness quoted for the transcriptome stay properties of the full deduplicated set. There is deliberately no second route in: an earlier version could rescue a transcript on ORF + homology support, and measured on this dataset that bought 0 DE genes and +0.127 pts of mapping rate while making the reference worse where it counts (56,599 tx at C:72.1% S:45.5% D:26.6% with it, against 48,224 tx at C:70.6% S:48.2% D:22.4% without)."
                 }
             }
         },

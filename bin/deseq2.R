@@ -65,17 +65,14 @@ for (cl in setdiff(colnames(meta), c("sample", cond_col))) {
 dds <- DESeqDataSetFromTximport(txi, colData = meta, design = as.formula(design_str))
 
 # ---- DE-eligible genes ---------------------------------------------------------------
-# The quantification reference is whatever the expression filter kept. With expr_filter_rescue
-# off (the default) that is exactly the expressed set and this restriction is a no-op. With it on,
-# the kept set is a UNION — transcripts the experiment saw above threshold, plus unexpressed ones
-# rescued on ORF + homology — and the two parts are not equivalent: a gene made only of transcripts
-# the experiment never saw above threshold carries no evidence about treatment and costs
-# multiple-testing burden for nothing, even though its model belongs in the index.
+# The quantification reference is whatever the expression filter kept, and expression is the only
+# way into it, so this list is that same set and the restriction is an identity. It is applied all
+# the same: it is the interlock that stops a second route into the index (homology support, say)
+# from silently widening what gets tested, and it costs one set intersection.
 #
-# So the restriction is applied HERE, to genes, and AFTER tximport rather than by cutting the
-# tx2gene map: a gene that qualifies keeps the counts of all its transcripts, rescued isoforms
-# included, so no reads are discarded. A gene qualifies if at least one of its transcripts is in
-# the expressed list.
+# It is applied HERE, to genes, and AFTER tximport rather than by cutting the tx2gene map, so that
+# a gene that qualifies keeps the counts of all its transcripts and no reads are discarded. A gene
+# qualifies if at least one of its transcripts is in the expressed list.
 #
 # This is also what sets the ORA background: enrichment.R takes its universe from the genes in
 # these results tables, so restricting the model restricts the background in the same step.

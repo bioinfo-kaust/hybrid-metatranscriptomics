@@ -222,11 +222,11 @@ for r in read_tsv("route_contribution.tsv"):
             row["busco"] = parse_busco(open(bp).read())
     ladder.append(row)
 
-# The expression-filtered set is a rung too, and the most consequential one: it is the reference
-# every DE number is computed against. route_contribution.tsv is written before the filter runs, so
-# it cannot carry it -- but SEQ_STATS_EXPR and BUSCO_EXPR both publish for it. Appending it here is
-# what makes the assembly and the DE reference comparable on one line each, which is the whole
-# point of reporting completeness on the assembly and testing on the subset.
+# The expression-filtered set is a rung too, and the most consequential one: it is the set that is
+# annotated, quantified and tested. route_contribution.tsv is written before the filter runs, so it
+# cannot carry it -- but SEQ_STATS_EXPR and BUSCO_EXPR both publish for it. Appending it here is
+# what makes the assembly and the analysed set comparable on one line each, which is the whole
+# point of reporting completeness on the assembly and analysing the subset.
 for _st in sorted(glob.glob(path("*_expressed.stats.tsv"))):
     _rows = read_tsv(os.path.basename(_st))
     if not _rows:
@@ -237,7 +237,7 @@ for _st in sorted(glob.glob(path("*_expressed.stats.tsv"))):
     _bp = path(f"{_name}.busco.txt")
     ladder.append({
         "reference": _name,
-        "basis": "expression-filtered (the reference DE and enrichment run against)",
+        "basis": "expression-filtered (annotated, quantified and tested)",
         "transcripts": i(_rows[0].get("num_seqs")),
         "bp": i(_rows[0].get("sum_len")),
         "n50": None,
@@ -592,6 +592,26 @@ _fig_names = set().union(*figures_by_map.values()) if figures_by_map else set()
 figure_meta = [{"name": n, "title": t, "why": w} for n, t, w in FIGURES_SHOWN if n in _fig_names]
 ma_figures = sorted(n for n in _fig_names if n.startswith("F13_MA_"))
 
+# ---- the gene-level FASTA each map ships, keyed by map
+# A gene map is a table of ids: without this, a "gene" has counts and no sequence. GENE_FASTA
+# writes one representative per gene, and its gene_rep.tsv is what says how many of them carry a
+# peptide — the number that decides whether a protein-level use of the set is possible at all.
+gene_seqs = {}
+for _gr in sorted(glob.glob(path("*.gene_rep.tsv"))):
+    try:
+        with open(_gr) as fh:
+            rows = [ln.rstrip("\n").split("\t") for ln in fh][1:]
+    except OSError:
+        continue
+    if not rows:
+        continue
+    _label = os.path.basename(_gr)[:-len(".gene_rep.tsv")]
+    gene_seqs[map_kind_of(_label)] = {
+        "file": os.path.basename(_gr).replace(".gene_rep.tsv", ".genes.fasta"),
+        "genes": len(rows),
+        "pep": sum(1 for r in rows if len(r) > 4 and r[4] not in ("NA", "")),
+    }
+
 # ---- the three gene maps, side by side rather than three separate claims
 gene_maps = []
 corset_summary = first_glob("*_corset.summary.txt")
@@ -615,15 +635,15 @@ def de_total(d):
 
 if corset and corset.get("stripped"):
     gene_maps.append({"primary": primary_map == "string", "name": "String-stripped ids", "basis": "per-source naming rules",
-                      "genes": corset["stripped"], "sig": de_total(dge),
+                      "genes": corset["stripped"], "sig": de_total(dge), "seqs": gene_seqs.get("string"),
                       "note": "the default map; cannot reconcile identity ACROSS assembly sources"})
 if corset and corset.get("clusters"):
     gene_maps.append({"primary": primary_map == "corset", "name": "Corset", "basis": "shared reads + expression",
-                      "genes": corset["clusters"], "sig": de_total(dge_corset),
+                      "genes": corset["clusters"], "sig": de_total(dge_corset), "seqs": gene_seqs.get("corset"),
                       "note": "clusters contigs by the reads they share, not by sequence identity"})
 if locus and locus.get("after"):
     gene_maps.append({"primary": primary_map == "locus", "name": "Locus rebuild", "basis": "genomic coordinates",
-                      "genes": locus["after"], "sig": de_total(dge_locus),
+                      "genes": locus["after"], "sig": de_total(dge_locus), "seqs": gene_seqs.get("locus"),
                       "note": "groups transcripts sharing a splice junction on the genome"})
 
 # ---- the three DE branches, for the methods diagram
@@ -681,6 +701,10 @@ def fmt(n):
 
 ref_set = P("dge_reference", "all_sources_dedup")
 ref_row = next((r for r in ladder if r["reference"] == ref_set), None) or (ladder[-1] if ladder else None)
+# the analysed set: the same rung after the expression filter, which is what is annotated and
+# tested. Absent when the filter is off (expr_filter_tpm = 0), in which case ref_row IS the
+# analysed set.
+de_row = next((r for r in ladder if r["reference"] == f"{ref_set}_expressed"), None)
 
 total_in = sum(s["reads_in"] for s in samples)
 total_kept = sum(s["kept"] for s in samples)
@@ -854,6 +878,10 @@ if ref_row:
     block("transcriptome", "Reference transcriptome", "product",
           f"{ref_set} · {len(ladder)} variant{'s' if len(ladder) != 1 else ''} built and scored",
           [R("transcripts", fmt(ref_row["transcripts"])),
+           # the number most of this dashboard is actually about: what survived the filter and
+           # was therefore annotated, quantified and tested
+           R("analysed set", fmt(de_row["transcripts"]) if de_row else "",
+             "after the expression filter: annotated, quantified and tested" if de_row else ""),
            R("genes", fmt(genes) if genes else "",
              f"upper bound; {fmt(locus_after)} by genomic locus" if locus_after else "from string-stripped ids"),
            R("N50", fmt(ref_row["n50"]) if ref_row.get("n50") else ""),
@@ -867,7 +895,8 @@ if ref_row:
 if annot_evidence:
     tot = annot_evidence[0]["total"]
     ev = {e["label"]: e["n"] for e in annot_evidence}
-    block("annotation", "Annotation", "product", f"evidence on {fmt(tot)} transcripts",
+    block("annotation", "Annotation", "product",
+          f"evidence on {fmt(tot)} transcripts — the expression-filtered set",
           [R(k, f"{fmt(v)}", pct_of(v, tot, 1)) for k, v in ev.items()],
           "annotation")
 
@@ -917,7 +946,7 @@ stages = []
 
 
 # ------------------------------------------------------------------ expression filter
-# The filter log is the only place the expressed/rescued split and the DE-eligible count are
+# The filter log is the only place the kept/dropped accounting and the DE-eligible count are
 # written down. Parsed rather than recomputed so the dashboard cannot disagree with the pipeline.
 expr_filter = {}
 _ef = first_glob("transcriptome/*_expressed.filter.txt") or first_glob("*_expressed.filter.txt")
@@ -930,10 +959,8 @@ if _ef:
         "rule":      (re.search(r"expression filter:\s*(.+)", _txt).group(1).strip()
                       if re.search(r"expression filter:\s*(.+)", _txt) else ""),
         "kept":      _ef_num(r"transcripts kept\s*:\s*([\d,]+)"),
-        "expressed": _ef_num(r"expressed\s*:\s*([\d,]+)"),
-        "rescued":   _ef_num(r"rescued by ORF\+hom:\s*([\d,]+)"),
         "dropped":   _ef_num(r"transcripts dropped\s*:\s*([\d,]+)"),
-        "eligible":  _ef_num(r"DE-eligible transcripts \(expressed only\):\s*([\d,]+)"),
+        "eligible":  _ef_num(r"DE-eligible transcripts\s*:\s*([\d,]+)"),
     }
     _g = re.search(r"genes\s+([\d,]+)\s*->\s*([\d,]+)", _txt)
     if _g:
@@ -1039,34 +1066,35 @@ stage("dedup", "Cross-source deduplication", "Assembly", "vsearch", True,
       "The layered set counts one biological locus once per source that recovered it. Deduplication "
       "reduces that; it does not eliminate it — which is what the locus rebuild below addresses.",
       [f"vsearch --cluster_fast --id {P('cdhit_dedup_id', 0.95)}"],
-      [M("reference used downstream", fmt(ref_row["transcripts"]) if ref_row else "—"),
+      [M("the assembly (before the filter)", fmt(ref_row["transcripts"]) if ref_row else "—"),
        M("BUSCO complete", f"{ref_row['busco']['complete']:.1f}%" if ref_row and ref_row["busco"] else "—")],
       "transcriptome/")
 
 stage("filter", "Expression filter", "Expression", "salmon pass 1 + filter_by_expression.py", True,
       "The ladder applies no expression evidence at any rung, so the deduplicated set carries every "
       "unexpressed fragment the four sources produced. A first salmon pass over that set measures "
-      "what the experiment actually saw, and the reference is cut to the survivors. What this cuts "
-      "is the reference for QUANTIFICATION AND TESTING — not the assembly. The annotation and the "
-      "BUSCO completeness quoted for this transcriptome are both measured upstream, on the full "
-      "deduplicated set, so a dropped transcript keeps its annotation row and still counts toward "
-      "reported completeness; it is simply never quantified and never tested.",
+      "what the experiment actually saw, and the reference is cut to the survivors. Everything after "
+      "this point runs on that one set: it is what gets annotated, re-quantified, tested and drawn, "
+      "so no number on this dashboard has to be qualified with which reference it came from. What "
+      "the filter does NOT touch is the assembly — every ladder rung keeps its own FASTA, stats and "
+      "BUSCO summary, so the transcript count and the completeness quoted for the transcriptome are "
+      "still properties of the full deduplicated set.",
       [f"expressed: TPM >= {P('expr_filter_tpm', 1)} in >= {P('expr_filter_samples', 3)} libraries",
-       "rescue (ORF AND homology): ON — those transcripts are quantified but never tested"
-       if P("expr_filter_rescue", False) else
-       "rescue (ORF AND homology): OFF — measured on this data to add 0 DE genes and 0.13 pts of "
-       "mapping, while costing 4.2 pts of BUSCO duplication",
-       "a presence rule, not a mean: a transcript on in one group and off elsewhere survives"],
-      [M("DE reference", fmt(expr_filter["kept"]) if expr_filter.get("kept") else "—"),
-       M("of those, expressed", fmt(expr_filter["expressed"]) if expr_filter.get("expressed") else "—"),
-       M("rescued by ORF+homology", fmt(expr_filter["rescued"]) if expr_filter.get("rescued") else "—"),
-       M("dropped", fmt(expr_filter["dropped"]) if expr_filter.get("dropped") else "—")],
+       "a presence rule, not a mean: a transcript on in one group and off elsewhere survives",
+       "nothing is rescued on homology: measured on this data that added 0 DE genes and 0.13 pts "
+       "of mapping, while costing 4.2 pts of BUSCO duplication"],
+      [M("the analysed set", fmt(expr_filter["kept"]) if expr_filter.get("kept") else "—"),
+       M("dropped", fmt(expr_filter["dropped"]) if expr_filter.get("dropped") else "—"),
+       M("genes", fmt(expr_filter["genes_after"]) if expr_filter.get("genes_after") else "—"),
+       M("BUSCO complete", f"{de_row['busco']['complete']:.1f}%" if de_row and de_row["busco"] else "—")],
       "transcriptome/")
 
 stage("annot", "Functional annotation", "Annotation",
       "TransDecoder · DIAMOND · eggNOG-mapper · InterProScan", on("skip_annotation"),
-      "ORFs first, then homology and domains. Column has_ORF is yes/no for every row — the ORF count "
-      "is coding_status == \"coding\", not the number of non-empty cells.",
+      "ORFs first, then homology and domains. It runs on the expression-filtered set, so this table "
+      "and the DE tables describe the same transcripts: an annotation row here is a transcript the "
+      "experiment saw. Column has_ORF is yes/no for every row — the ORF count is "
+      "coding_status == \"coding\", not the number of non-empty cells.",
       ["TransDecoder.Predict --single_best_only",
        "diamond blastp -k 1 -e 1e-5 --more-sensitive",
        "eggnog-mapper -m diamond" if on("skip_eggnog") else "eggNOG-mapper: skipped",
@@ -1080,17 +1108,17 @@ stage("quant", "Quantification", "Expression", "salmon", True,
       "auto-detected and reported, not assumed.",
       ["salmon index -d <genome decoys> -k 31",
        "salmon quant -l A --gcBias --seqBias --dumpEq --numBootstraps 30",
-       "run TWICE: once on the deduplicated set to measure expression, once on the filtered set"],
+       "the reported pass; the earlier pass on the deduplicated set only fed the filter"],
       [M("mean mapping", f"{sum(mapped) / len(mapped):.2f}%" if mapped else "—"),
        M("library type", samples[0]["library_type"] if samples and samples[0]["library_type"] else "—"),
        M("fragments processed", fmt(frag) if frag else "—")],
       "quantification/")
 
 stage("dge", "Differential expression", "Expression", "tximport + DESeq2", on("skip_dge"),
-      "Gene-level counts aggregated with tximport, then DESeq2 on the configured design. Only genes "
-      "with at least one expressed transcript are tested; where the ORF+homology rescue is enabled "
-      "those transcripts stay in the quantification and their reads still count toward their gene, "
-      "without themselves being testable. Fold changes are "
+      "Gene-level counts aggregated with tximport, then DESeq2 on the configured design. Every gene "
+      "in the reference is testable, because the reference is already the expressed set — the "
+      "DE-eligible list is passed through and applied all the same, so a change to how the "
+      "reference is built cannot silently widen what gets tested. Fold changes are "
       "SHRUNKEN: apeglm for every contrast, releveling and refitting the Wald test where the "
       "contrast is not already a model coefficient, with ashr only as a fallback if that fails. "
       "The raw estimate is kept as log2FoldChange_unshrunken. sig applies both the padj and the "
@@ -1149,6 +1177,9 @@ DATA = {
     "meta": {
         "title": args.title,
         "reference_set": ref_set,
+        # the set that was annotated, quantified and tested: the same rung after the
+        # expression filter, or the rung itself when the filter is off
+        "analysed_set": de_row["reference"] if de_row else ref_set,
         "run_name": wf.get("run_name", ""),
         "start": wf.get("start", ""),
         "profile": wf.get("profile", ""),
@@ -1171,17 +1202,16 @@ DATA = {
     "ladder": ladder,
     "annotation": {"summary": annot_summary, "evidence": annot_evidence,
                    "reference": ref_set,
-                   "note": ("Built on the selected ladder rung BEFORE the expression filter, so "
-                            "this describes more transcripts than the DE tabs — deliberately. "
-                            "Annotation and BUSCO completeness are properties of the ASSEMBLY and "
-                            "are measured on the full deduplicated set; the expression filter "
-                            "produces the reference for quantification and testing and has no say "
-                            "over what is annotated. A transcript with a protein hit, an InterPro "
-                            "domain or a KEGG assignment therefore keeps its row here even when "
-                            "the experiment never saw it above threshold: that is a statement "
-                            "about what this species encodes, not a result. Gene ids here are the "
-                            "string-stripped map; the locus and Corset variants are re-keyed "
-                            "copies of this same table.")},
+                   "note": ("Built on the expression-filtered reference, so this table and the DE "
+                            "tabs describe the SAME transcripts: every row is a transcript the "
+                            "experiment saw at TPM >= the filter threshold, and an unexpressed "
+                            "gene model from the assembly has no row here. That is deliberate — it "
+                            "makes an annotation count and a DE count comparable without a "
+                            "footnote — but it also means this table is not a catalogue of what "
+                            "the species encodes: the assembly holds more gene models than this, "
+                            "and BUSCO completeness is still reported on it rather than here. Gene "
+                            "ids are the string-stripped map; the locus and Corset variants are "
+                            "re-keyed copies of this same table.")},
     "dge": dge,
     "dge_locus": dge_locus,
     "dge_corset": dge_corset,
@@ -1785,9 +1815,10 @@ function sectionOverview() {
   if (DATA.gene_maps && DATA.gene_maps.length > 1)
     caveats.push(`${DATA.gene_maps.length} gene maps were built and none is unambiguously right — they agree on a minority of the transcripts they implicate (see "Where the maps agree" in the Genes tab). Quote a range and name the map, not a single gene count.`);
   else if (DATA.locus) caveats.push('Two gene maps exist and neither is unambiguously right — see the Genes tab.');
-  const used = (DATA.ladder || []).find(r => r.reference === DATA.meta.reference_set);
+  const used = (DATA.ladder || []).find(r => r.reference === DATA.meta.analysed_set)
+            || (DATA.ladder || []).find(r => r.reference === DATA.meta.reference_set);
   if (used && used.busco && used.busco.dup > 20)
-    caveats.push(`BUSCO duplication is ${used.busco.dup.toFixed(1)}% on ${used.reference}, the reference everything was quantified against: on a de novo catalogue that usually means one locus is represented several times, not that the genome is duplicated.`);
+    caveats.push(`BUSCO duplication is ${used.busco.dup.toFixed(1)}% on ${used.reference}, the set that was annotated, quantified and tested: on a de novo catalogue that usually means one locus is represented several times, not that the genome is duplicated.`);
   if ((DATA.longread.samples || []).length && DATA.longread.note) caveats.push(DATA.longread.note);
   if (caveats.length) {
     const box = h('div', { class: 'card' }, [h('div', { class: 'figcap' }, [h('h3', { text: 'Read the numbers with these in mind' })])]);
@@ -1800,17 +1831,17 @@ function sectionOverview() {
 
 /* The shape of the run: what feeds what, and where each reported number is produced.
    Drawn rather than described because the things readers get wrong here are all structural: the
-   annotation and the reported BUSCO completeness are measured on the FULL assembly, above the
-   expression filter, which cuts only the reference for quantification and testing; and the three
-   gene maps are three re-aggregations of ONE quantification, not three analyses, so they are drawn
-   as parallel branches with their own DESeq2 and their own enrichment rather than folded into a
-   single box that implies one answer. Boxes are numbered in execution order so prose can point at
-   one. */
+   expression filter sits ABOVE the annotation, so one set of transcripts is annotated, quantified
+   and tested while the completeness quoted for the assembly belongs to the larger set the filter
+   cut from; and the three gene maps are three re-aggregations of ONE quantification, not three
+   analyses, so they are drawn as parallel branches with their own DESeq2 and their own enrichment
+   rather than folded into a single box that implies one answer. Boxes are numbered in execution
+   order so prose can point at one. */
 // step numbers of the boxes the prose refers to; set when the diagram is drawn (an optional input
 // box shifts them)
-let FLOW_N = { annot: 8, filt: 10 };
+let FLOW_N = { annot: 10, filt: 9 };
 function flowDiagram() {
-  const W = 780, H = 706;
+  const W = 780, H = 772;
   const NS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(NS, 'svg');
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
@@ -1818,12 +1849,12 @@ function flowDiagram() {
   svg.setAttribute('aria-label',
     'Flow: reads are trimmed, rRNA-depleted and decontaminated, then assembled by four routes ' +
     '(any assembly-only libraries join the two short-read routes and nothing else) ' +
-    'into a reference ladder; the ladder is deduplicated, and that full set is what gets ' +
-    'annotated and scored for completeness. A first salmon pass measures expression, the ' +
-    'expression filter cuts the reference down to what the experiment saw, and a second salmon ' +
-    'pass quantifies it. The run then splits into three parallel branches — one per gene map — ' +
-    'each with its own DESeq2 test and its own GO/KEGG enrichment; one is marked primary and the ' +
-    'other two are sensitivity arms. Boxes are numbered in execution order.');
+    'into a reference ladder; the ladder is deduplicated, and that full set is what is scored for ' +
+    'completeness. A first salmon pass measures expression, the expression filter cuts the ' +
+    'reference down to what the experiment saw, and that filtered set is then annotated and ' +
+    'quantified by a second salmon pass. The run then splits into three parallel branches — one ' +
+    'per gene map — each with its own DESeq2 test and its own GO/KEGG enrichment; one is marked ' +
+    'primary and the other two are sensitivity arms. Boxes are numbered in execution order.');
 
   const mk = (tag, attrs, text) => {
     const e = document.createElementNS(NS, tag);
@@ -1939,22 +1970,28 @@ function flowDiagram() {
   const ladderB = box(218, 186, 340, 46, 'Reference ladder', S3,
                       { lines: ['isoseq → isoseq_stringtie → …_trinity_lrfree → ' + refName] });
 
-  // The assembly, and the numbers quoted for it: annotation and completeness are BOTH measured
-  // here, on the full deduplicated set, not on whatever the expression filter leaves behind.
-  const annot = box(30, 262, 310, 62, 'The assembly  ·  ' + refName, MUTED,
-                    { lines: ['TransDecoder → DIAMOND · eggNOG · InterProScan',
-                              [refRow && refRow.transcripts ? fmtN(refRow.transcripts) + ' transcripts' : null,
-                               busco(refRow)].filter(Boolean).join('  ·  ') || 'annotated before the filter'] });
-  const q1    = box(420, 262, 310, 62, 'salmon pass 1  ·  ' + refName, MUTED,
-                    { lines: ['measures what the experiment saw', 'TPM only — nothing here is reported'] });
+  /* The assembly is now drawn as what it is: the set the completeness number belongs to, and
+     nothing else. Dashed and muted, because no reported annotation or expression number comes
+     from it — the filter below it decides what the rest of the run sees. */
+  const asm   = box(218, 252, 512, 46, 'The assembly  ·  ' + refName, MUTED,
+                    { dashed: true,
+                      lines: [[refRow && refRow.transcripts ? fmtN(refRow.transcripts) + ' transcripts' : null,
+                               busco(refRow)].filter(Boolean).join('  ·  ')
+                              || 'scored for completeness; not annotated'] });
+  const q1    = box(218, 330, 512, 46, 'salmon pass 1  ·  ' + refName, MUTED,
+                    { lines: ['measures what the experiment saw — TPM only, nothing here is reported'] });
 
-  const filt  = box(218, 356, 512, 62, 'Expression filter  →  the DE reference', S3,
+  const filt  = box(218, 408, 512, 62, 'Expression filter  →  the analysed set', S3,
                     { lines: [F.rule || 'TPM ≥ 1 in ≥ 3 libraries',
                               [F.kept ? fmtN(F.kept) + ' kept, ' + fmtN(F.dropped) + ' dropped' : null,
                                busco(deRow)].filter(Boolean).join('  ·  ')
-                              || 'cuts the reference for testing, not the assembly'] });
-  const q2    = box(380, 450, 350, 46, 'salmon pass 2  ·  one quantification', S1,
-                    { lines: ['decoy-aware, --dumpEq, 30 bootstraps — the reported counts'] });
+                              || 'everything below runs on what it keeps'] });
+  const annot = box(30, 500, 310, 62, 'Annotation  ·  ' + (DATA.meta.analysed_set || refName), S2,
+                    { lines: ['TransDecoder → DIAMOND · eggNOG · InterProScan',
+                              F.kept ? fmtN(F.kept) + ' transcripts — the same set as the DE tables'
+                                     : 'the filtered set, not the assembly'] });
+  const q2    = box(380, 500, 350, 62, 'salmon pass 2  ·  one quantification', S1,
+                    { lines: ['decoy-aware, --dumpEq, 30 bootstraps', 'the counts every DE number comes from'] });
 
   /* Three parallel branches, not three analyses. Same counts, same DESeq2 code, same thresholds;
      only the transcript→gene map differs, which is why a difference between them is a difference
@@ -1966,7 +2003,7 @@ function flowDiagram() {
   (MF.length ? MF : [{ label: 'gene map', basis: '', primary: false }]).forEach((m, k) => {
     const [x, w] = cols[k] || cols[2];
     const col = m.primary ? S3 : S2;
-    deBoxes.push(box(x, 528, w, 62, m.label, col, {
+    deBoxes.push(box(x, 598, w, 62, m.label, col, {
       primary: !!m.primary,
       lines: ['DESeq2 · ' + (m.basis || 'gene map'),
               (m.sig === undefined || m.sig === null) ? 'no results in this run'
@@ -1979,7 +2016,7 @@ function flowDiagram() {
     const keys = Object.keys(t);
     const sum = pat => keys.filter(kk => kk.endsWith(pat)).reduce((a, kk) => a + t[kk], 0);
     const tot = keys.reduce((a, kk) => a + t[kk], 0);
-    enrBoxes.push(box(x, 626, w, 58, 'Enrichment', m.primary ? S3 : MUTED, {
+    enrBoxes.push(box(x, 692, w, 58, 'Enrichment', m.primary ? S3 : MUTED, {
       emphasis: !!m.primary, dashed: !m.primary,
       lines: [keys.length ? `${fmtN(tot)} terms at padj < ${m.enr_alpha || 0.05}` : 'GO / KEGG · ORA + GSEA',
               keys.length ? `ORA ${fmtN(sum('ORA'))}  ·  GSEA ${fmtN(sum('GSEA'))}` : 'not run']
@@ -1999,16 +2036,18 @@ function flowDiagram() {
       fill: 'none', 'marker-end': 'url(#fl-arrow)' })));
   }
   elbow(rA, ladderB); elbow(rB, ladderB); elbow(rC, ladderB); elbow(rD, ladderB);
-  elbow(ladderB, annot, 'annotated in full'); elbow(ladderB, q1);
+  // one chain, top to bottom: the assembly is quantified once to measure expression, the filter
+  // cuts it to what the experiment saw, and that set is what is annotated AND what is quantified
+  // for the record — which is the ordering the rest of the page assumes
+  elbow(ladderB, asm);
+  elbow(asm, q1);
   elbow(q1, filt, 'TPM');
-  // only drawn when the run actually used the ORF+homology rescue: with it off (the default) the
-  // filter takes no input from the annotation at all, and an edge here would be a lie
-  if (F.rescued) elbow(annot, filt, 'ORF + homology');
-  FLOW_N = { annot: annot.n, filt: filt.n };
+  elbow(filt, annot, 'the filtered set');
   arrow(filt, q2);
-  deBoxes.forEach(b => elbow(q2, b, undefined, 512));
+  FLOW_N = { annot: annot.n, filt: filt.n };
+  deBoxes.forEach(b => elbow(q2, b, undefined, 580));
   deBoxes.forEach((b, k) => { if (enrBoxes[k]) arrow(b, enrBoxes[k]); });
-  rail(annot, enrBoxes, 66, 338, 608, 'terms for enrichment');
+  rail(annot, enrBoxes, 66, 576, 676, 'terms for enrichment');
 
   return svg;
 }
@@ -2035,26 +2074,17 @@ function thresholdTable() {
   add('Novel-vs-reference call', 'minimap2 -x asm20 -c --secondary=no', 'transcript',
       'exact match counts, not the approximate ones -x alone gives');
 
-  // The ORF+homology rescue is off by default, and when it is off the "kept" and "DE-eligible"
-  // sets are the same transcripts. Showing two rows that differ only in wording would invent a
-  // distinction this run did not make, so the split is only spelled out when it is real.
-  const rescued = Number(F.rescued || 0);
-  add('Expression filter — the DE reference', F.rule ||
+  // There is one way into the analysed set and it is expression, so "kept" and "DE-eligible" are
+  // the same transcripts. The two rows below say what that set feeds and what it leaves alone,
+  // which is the pair readers get wrong.
+  add('Expression filter — the analysed set', F.rule ||
       `TPM >= ${p('expr_filter_tpm', 1)} in >= ${p('expr_filter_samples', 3)} libraries`,
       'transcript',
-      F.kept ? `${n(F.kept)} kept, ${n(F.dropped)} dropped${rescued ? ` (${n(F.expressed)} expressed + ${n(rescued)} rescued)` : ''}` : '—');
-  add('→ what it feeds', 'salmon pass 2, and every count the DE analysis uses', 'transcript',
-      'NOT the annotation and NOT the reported BUSCO — both are measured before this cut');
-  add('→ what it does NOT touch', 'the assembly, its annotation, its completeness', 'transcript',
-      'dropped transcripts keep their annotation row; they are simply never quantified or tested');
-
-  if (rescued) {
-    add('DE-eligible set', `gene has >= 1 transcript at TPM >= ${p('expr_filter_tpm', 1)} in >= ${p('expr_filter_samples', 3)} libraries`,
-        'gene',
-        F.eligible ? `${n(F.eligible)} expressed transcripts define it` : 'rescued-only genes are not tested');
-    add('→ what it feeds', 'DESeq2, and therefore the GO/KEGG ORA background', 'gene',
-        'a tested gene keeps the counts of ALL its transcripts, rescued ones included');
-  }
+      F.kept ? `${n(F.kept)} kept, ${n(F.dropped)} dropped` : '—');
+  add('→ what it feeds', 'the annotation, salmon pass 2, DESeq2, enrichment and the figures',
+      'transcript', 'everything reported past this row describes the kept transcripts and nothing else');
+  add('→ what it does NOT touch', 'the assembly: its transcript count and its BUSCO completeness',
+      'transcript', 'every ladder rung keeps its own FASTA, stats and BUSCO summary');
 
   add('DESeq2 pre-filter', `>= ${p('de_min_count', 5)} counts in >= ${p('de_min_samples', 3)} samples`, 'gene',
       'a presence rule, not a total: a sum passes a gene carried by one sample');
@@ -2090,11 +2120,12 @@ function sectionMethods() {
             'and into StringTie and Trinity (dashed edges), but are never quantified or tested. ' : '') +
           'Boxes are numbered in execution order. Four things the diagram exists to make plain. ' +
           'Salmon runs TWICE — the first pass exists only to measure expression for the filter, ' +
-          'and every number reported as a quantification comes from the second. The assembly and ' +
-          'the DE reference are different sets and are measured separately: annotation and BUSCO ' +
-          `completeness are both reported on the full deduplicated assembly (box ${FLOW_N.annot}), while only ` +
-          `the expression-filtered subset (box ${FLOW_N.filt}) is indexed, quantified and tested — so the ` +
-          'Annotation tab legitimately describes more transcripts than the DE tabs. The run then ' +
+          'and every number reported as a quantification comes from the second. The expression ' +
+          `filter (box ${FLOW_N.filt}) sits ABOVE the annotation (box ${FLOW_N.annot}), so one set of ` +
+          'transcripts is annotated, quantified and tested and the Annotation tab describes the ' +
+          'same transcripts as the DE tabs; what the assembly keeps that this set does not is a ' +
+          'larger transcript count and the BUSCO completeness measured on it, both reported on ' +
+          'the Reference tab and nowhere else. The run then ' +
           'splits into three PARALLEL branches, one per gene map, each with its own DESeq2 and ' +
           'its own enrichment; they are three re-aggregations of ONE quantification, so their ' +
           'results are not independent evidence and agreement between them is not replication. ' +
@@ -2109,11 +2140,12 @@ function sectionMethods() {
     title: 'Filters and thresholds',
     why: 'every cut this run applied, in the order it applied them',
     tableNode: thresholdTable(),
-    note: 'Read top to bottom: each row narrows what the row below it sees. The row most often ' +
-          'misread is the expression filter — it decides what is QUANTIFIED AND TESTED, and ' +
-          'nothing else. The transcript count, the annotation and the BUSCO completeness quoted ' +
-          'for this transcriptome are all measured above it, on the full deduplicated assembly, ' +
-          'so a transcript can be absent from the DE tables and still present in the annotation.'
+    note: 'Read top to bottom: each row narrows what the row below it sees. The row that decides ' +
+          'the most is the expression filter: everything below it — the annotation, the reported ' +
+          'quantification, DESeq2, enrichment — sees only what it kept. The transcript count and ' +
+          'the BUSCO completeness quoted for this transcriptome are measured above it, on the ' +
+          'full deduplicated assembly, so those two numbers describe more transcripts than any ' +
+          'other number on this page.'
   }));
   out.appendChild(h('p', { class: 'sub', text: 'Every stage as it actually ran: the arguments come from this run’s parameters, the numbers from its outputs. A skipped stage stays listed so the shape of the run is visible.' }));
   const groups = [];
@@ -2322,7 +2354,7 @@ function sectionReference() {
     }));
     holder.appendChild(card({
       title: measure === 'transcripts' ? 'Transcripts per reference variant' : 'Genes per reference variant',
-      why: 'the assembly is ' + (DATA.meta.reference_set || '') + '; the expression-filtered rung below it is what DE runs against',
+      why: 'the assembly is ' + (DATA.meta.reference_set || '') + '; the expression-filtered rung below it is what the annotation and every DE number run on',
       chart: barH({ rows: rows, gutter: 150, color: S1, measure: measure }),
       table: {
         cols: [{ key: 'reference', label: 'Reference' }, { key: 'basis', label: 'Basis' },
@@ -2387,7 +2419,7 @@ function sectionAnnotation() {
   const out = h('div');
   // where these numbers come from: readers otherwise assume they describe the DE reference
   if (A.note) out.appendChild(h('p', { class: 'caveat', text:
-    'Source: the ' + (A.reference || 'selected') + ' transcript set. ' + A.note }));
+    'Source: the ' + (DATA.meta.analysed_set || A.reference || 'selected') + ' transcript set. ' + A.note }));
   if ((A.evidence || []).length) {
     const total = A.evidence[0].total;
     out.appendChild(card({
@@ -2616,11 +2648,14 @@ function sectionExpression() {
           cols: [{ key: 'name', label: 'Map' }, { key: 'basis', label: 'Built from' },
                  { key: 'genes', label: 'Genes', num: true },
                  { key: 'sig', label: 'DE genes (all contrasts)', num: true },
+                 { key: 'seqs', label: 'Gene FASTA', num: true },
                  { key: 'note', label: 'Caveat' }],
           rows: (DATA.gene_maps || []).map(m => ({ name: m.name + (m.primary ? '  (primary)' : ''), basis: m.basis, genes: fmt(m.genes),
-                 sig: (m.sig === null || m.sig === undefined) ? '—' : fmt(m.sig), note: m.note }))
+                 sig: (m.sig === null || m.sig === undefined) ? '—' : fmt(m.sig),
+                 seqs: m.seqs ? fmt(m.seqs.genes) + ' nt · ' + fmt(m.seqs.pep) + ' aa' : '—',
+                 note: m.note }))
         },
-        note: 'Every map runs through the same quantifications and the same DESeq2 code, so a difference in DE genes is a difference in gene identity and nothing else. The headline numbers come from the map named by dge_primary_map; the others are published beside them as sensitivity analyses.'
+        note: 'Every map runs through the same quantifications and the same DESeq2 code, so a difference in DE genes is a difference in gene identity and nothing else. The headline numbers come from the map named by dge_primary_map; the others are published beside them as sensitivity analyses. Each map also ships <code>&lt;set&gt;.genes.fasta</code> and <code>.genes.pep</code> in transcriptome/ — one representative per gene (its longest transcript, and the longest ORF on any of its transcripts), so a gene set can be BLASTed or scored in protein mode; the aa count is how many genes have an ORF at all.'
       }));
     }
 

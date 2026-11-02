@@ -113,6 +113,9 @@ analysed and is listed under **Changed** below.
 
 ### Fixed
 
+- `TRINITY` memory: the nf-core module passes 80% of `task.memory` as `--max_memory`, so the
+  ported 250 GB request gave Trinity 200G where the local module had hard-coded 240G. Measured
+  cost of the 40 GB: 15 h 23 m against 9 h 18 m for the same assembly. Now requested at 300 GB
 - No contaminant genomes with `skip_decontam` left at `false` stalled the run silently after
   FastQC (no assembly, no DGE, still reported success); decontamination is now skipped instead
 - `--longread_samplesheet null` was opened as a file called `null`

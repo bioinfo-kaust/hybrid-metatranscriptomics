@@ -47,8 +47,11 @@ workflow HYBRIDMETATRANSCRIPTOMICS {
     def ch_versions      = channel.empty()
     def ch_multiqc_files = channel.empty()
 
-    def expr_rule = params.expr_filter_tpm > 0
-        ? "TPM >= ${params.expr_filter_tpm} in >= ${params.expr_filter_samples} libraries"
+    def expr_tests = []
+    if (params.expr_filter_tpm   > 0) expr_tests << "TPM >= ${params.expr_filter_tpm}"
+    if (params.expr_filter_reads > 0) expr_tests << "reads >= ${params.expr_filter_reads}"
+    def expr_rule = expr_tests
+        ? "${expr_tests.join(' AND ')} in >= ${params.expr_filter_samples} libraries"
         : 'off (the whole set is annotated and tested)'
     log.info """
     ------------------------------------------------------------------
@@ -128,8 +131,9 @@ workflow HYBRIDMETATRANSCRIPTOMICS {
      * BUSCO numbers, so the completeness quoted for the transcriptome is still a property of the
      * full deduplicated set. EXPRESSION_FILTER adds the same two measurements for the filtered set.
      *
-     * expr_filter_tpm = 0 switches the filter off: the ladder tip itself is annotated and tested,
-     * and the run has one salmon pass either way.
+     * Setting BOTH expr_filter_tpm and expr_filter_reads to 0 switches the filter off: the ladder
+     * tip itself is annotated and tested, and the run has one salmon pass either way. With both
+     * set, a library must pass both tests for that library to count.
      */
     ch_ref_fasta   = BUILD_TRANSCRIPTOME.out.selected
     ch_ref_tx2gene = BUILD_TRANSCRIPTOME.out.selected_tx2gene
@@ -137,7 +141,7 @@ workflow HYBRIDMETATRANSCRIPTOMICS {
     ch_expr_qc     = channel.empty()
     // no filter -> every gene in the reference is DE-eligible, signalled by the sentinel
     ch_expr_tx     = channel.value(file("${projectDir}/assets/NO_FILE_EXPRTX", checkIfExists: true))
-    if (params.expr_filter_tpm > 0) {
+    if (params.expr_filter_tpm > 0 || params.expr_filter_reads > 0) {
         EXPRESSION_FILTER(ch_reads, ch_ref_fasta, ch_ref_tx2gene, PREPARE_REFERENCES.out.genome)
         ch_ref_fasta   = EXPRESSION_FILTER.out.fasta
         ch_ref_tx2gene = EXPRESSION_FILTER.out.tx2gene
@@ -207,6 +211,23 @@ workflow HYBRIDMETATRANSCRIPTOMICS {
         ch_figures = FIGURES.out.figures
     }
 
+    /*
+     * Which gene map is primary cannot be settled from this run's own outputs: a map that calls
+     * more DE genes is not thereby the better map. Deciding needs INDEPENDENT truth (marker
+     * orthologs, a reference genome's gene models) and a label-permutation null, which are
+     * computed outside the pipeline. --genemap_eval points at a directory of those tables
+     * (genemap_eval.tsv, genemap_null.tsv, genemap_verdict.txt); when it is set, the dashboard
+     * renders the comparison and the rationale, and when it is not, that card is simply absent.
+     */
+    // Only the genemap_* tables, not the whole directory. An evaluation that has actually been
+    // run leaves its working material beside those tables — the permuted samplesheets, the
+    // rebuilt Corset maps, and one DESeq2 output directory per shuffle, which came to 2.5 GB on
+    // this dataset. Globbing '*' would stage all of it into the dashboard task to read three
+    // small files.
+    ch_genemap_eval = params.genemap_eval
+        ? channel.fromPath("${params.genemap_eval}/genemap_*", checkIfExists: true)
+        : channel.empty()
+
     // everything the reports are built from, in one place so both consumers agree
     ch_report_inputs = ch_qc_tables
         .mix(BUILD_TRANSCRIPTOME.out.ladder)
@@ -241,6 +262,11 @@ workflow HYBRIDMETATRANSCRIPTOMICS {
                 .mix(ch_assembly_tables)
                 .mix(QUANTIFY_AND_DGE.out.gene_map_files)
                 .mix(QUANTIFY_AND_DGE.out.gene_rep)
+                .mix(ch_genemap_eval)
+                // the per-sample salmon directories, flattened out of the collected list: the
+                // Explorer tab ships the transcript-level TPM matrix, which only exists here.
+                // Named <sample>/, so they cannot collide with any table staged above.
+                .mix(QUANTIFY_AND_DGE.out.quants.flatten())
                 .unique()
                 .collect(),
             channel.value(writeRunManifest(outdir)),

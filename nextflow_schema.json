@@ -31,7 +31,7 @@
                     "type": "string",
                     "format": "file-path",
                     "description": "Long reads that were pooled before the pipeline saw them (a polished Iso-Seq set, say) carry no per-sample identity.",
-                    "help_text": "Long reads that were pooled before the pipeline saw them (a polished Iso-Seq set, say) carry no per-sample identity. Point this at a 'sequence_id<TAB>sample' table to recover it — extra/pacbio_fl_counts_to_membership.py builds one from a PacBio FL count matrix."
+                    "help_text": "Long reads that were pooled before the pipeline saw them (a polished Iso-Seq set, say) carry no per-sample identity. Point this at a 'sequence_id<TAB>sample' table to recover it \u2014 extra/pacbio_fl_counts_to_membership.py builds one from a PacBio FL count matrix."
                 },
                 "assembly_input": {
                     "type": "string",
@@ -406,6 +406,13 @@
                     "description": "TPM a transcript must reach to stay in the analysed set (0 disables the filter).",
                     "help_text": "The ladder applies no expression evidence at any rung, so its tip is a cross-source union carrying every near-duplicate and every unexpressed fragment. One salmon pass over that tip decides what the experiment actually saw, and the survivors become the ANALYSED set: they are what gets annotated, re-quantified, tested, enriched and plotted. expr_filter_tpm = 0 disables the filter and the ladder tip itself is analysed instead (one salmon pass either way). The rule is a PRESENCE rule, not a mean: a transcript expressed in one treatment group and absent elsewhere survives. What the filter does not touch is the assembly -- every rung keeps its own FASTA, seqkit stats and BUSCO summary, so the transcript count and the completeness quoted for the transcriptome stay properties of the full deduplicated set. There is deliberately no second route in: an earlier version could rescue a transcript on ORF + homology support, and measured on this dataset that bought 0 DE genes and +0.127 pts of mapping rate while making the reference worse where it counts (56,599 tx at C:72.1% S:45.5% D:26.6% with it, against 48,224 tx at C:70.6% S:48.2% D:22.4% without)."
                 },
+                "expr_filter_reads": {
+                    "type": "number",
+                    "default": 0,
+                    "minimum": 0,
+                    "description": "Estimated reads (salmon NumReads) a transcript must reach in a library for that library to count. 0 = off.",
+                    "help_text": "An alternative presence test to expr_filter_tpm, on the same first salmon pass and the same expr_filter_samples rule. TPM is length-normalised, so a short transcript and a long one at the same molar abundance pass alike; a read count is raw evidence, so it will not admit a transcript that only looks abundant because it is short. The two disagree most at the extremes of the length distribution, which is where spurious assembly fragments live. Set expr_filter_tpm = 0 and this to 5 for a pure read-count rule; set both for the intersection (a library must pass both tests to count). Both at 0 switches the filter off entirely, and the ladder tip is annotated and tested instead."
+                },
                 "expr_filter_samples": {
                     "type": "integer",
                     "default": 3,
@@ -578,6 +585,12 @@
                     "description": "Extra R library path (DESeq2, apeglm, clusterProfiler, ...) for -profile envmodules.",
                     "help_text": "Extra R library path (DESeq2, apeglm, clusterProfiler, ...) for -profile envmodules. The bioconductor module has no apeglm, so without it shrinkage silently degrades to ashr. Never set it with containers: a host library would shadow the container's packages.",
                     "hidden": true
+                },
+                "genemap_eval": {
+                    "type": "string",
+                    "format": "directory-path",
+                    "description": "Directory of externally-computed gene-map evaluation tables; enables the dashboard's primary-map rationale card.",
+                    "help_text": "Which transcript-to-gene map is primary cannot be decided from a run's own outputs, because a map that calls more differentially expressed genes is not thereby the better map. Deciding needs independent truth and a label-permutation null, both computed outside this pipeline. Point this at a directory holding any of: genemap_eval.tsv (map, truth, F1, ARI, split_pct, merge_pct, genes_per_label, fused_pct), genemap_null.tsv (map, false_calls_mean, n_perms) and genemap_verdict.txt (free text). The dashboard renders a comparison card from whatever is present and omits it entirely when this is unset."
                 },
                 "extra_path": {
                     "type": "string",

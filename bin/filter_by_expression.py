@@ -3,8 +3,14 @@
 
 Nothing else in the ladder filters on expression, so the ladder's cross-source union carries every
 near-duplicate and every unexpressed fragment the four assembly sources produced. A transcript is
-kept when it reaches --min-tpm in at least --min-samples libraries, measured on a first
-quantification pass over the unfiltered set.
+kept when it reaches --min-tpm (and/or --min-reads) in at least --min-samples libraries, measured
+on a first quantification pass over the unfiltered set.
+
+Two presence tests are available and either or both can be on. --min-tpm is length-normalised, so
+it treats a short transcript and a long one with the same molar abundance alike; --min-reads is
+raw evidence, so it will not admit a transcript that only looks abundant because it is short.
+They disagree most on the extremes of the length distribution, which is exactly where spurious
+assembly fragments live, so which one is used changes what the analysed set contains.
 
 The threshold is a PRESENCE rule, not a mean: a transcript expressed in one treatment group and
 absent elsewhere is exactly what a UV experiment is looking for, and averaging would bury it.
@@ -49,7 +55,13 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--quant-dir", required=True, help="directory of <sample>/quant.sf")
 ap.add_argument("--fasta", required=True)
 ap.add_argument("--tx2gene", required=True)
-ap.add_argument("--min-tpm", type=float, default=1.0)
+ap.add_argument("--min-tpm", type=float, default=1.0,
+                help="TPM a transcript must reach in a library to count as present there. "
+                     "0 disables the TPM test (then --min-reads must be set).")
+ap.add_argument("--min-reads", type=float, default=0.0,
+                help="Estimated reads (salmon NumReads) a transcript must reach in a library to "
+                     "count as present there. 0 disables the read test. When both tests are on, a "
+                     "library counts only if the transcript passes BOTH in that same library.")
 ap.add_argument("--min-samples", type=int, default=3)
 ap.add_argument("--out-fasta", required=True)
 ap.add_argument("--out-tx2gene", required=True)
@@ -67,13 +79,23 @@ quants = sorted(
 if not quants:
     sys.exit(f"[ERROR] no <sample>/quant.sf under {args.quant_dir}")
 
+if args.min_tpm <= 0 and args.min_reads <= 0:
+    sys.exit("[ERROR] both --min-tpm and --min-reads are 0, so nothing would be filtered; "
+             "set at least one, or switch the filter off upstream")
+
+# A library counts as "saw this transcript" only if it passes every ENABLED test in that same
+# library. Evaluating the tests per library rather than on a per-transcript summary is what keeps
+# this a presence rule: a transcript on in one treatment group and off elsewhere still survives.
 n_pass = {}
 for path in quants:
     with open(path) as fh:
         rd = csv.DictReader(fh, delimiter="\t")
         for row in rd:
-            if float(row["TPM"]) >= args.min_tpm:
-                n_pass[row["Name"]] = n_pass.get(row["Name"], 0) + 1
+            if args.min_tpm > 0 and float(row["TPM"]) < args.min_tpm:
+                continue
+            if args.min_reads > 0 and float(row["NumReads"]) < args.min_reads:
+                continue
+            n_pass[row["Name"]] = n_pass.get(row["Name"], 0) + 1
 
 expressed = {t for t, n in n_pass.items() if n >= args.min_samples}
 keep = expressed
@@ -114,7 +136,12 @@ with open(args.tx2gene) as fh, open(args.out_tx2gene, "w") as out:
             genes_after.add(parts[1])
 kept_genes = len(genes_after)
 
-rule = f"TPM >= {args.min_tpm} in >= {args.min_samples} of {len(quants)} libraries"
+_tests = []
+if args.min_tpm > 0:
+    _tests.append(f"TPM >= {args.min_tpm}")
+if args.min_reads > 0:
+    _tests.append(f"reads >= {args.min_reads:g}")
+rule = f"{' AND '.join(_tests)} in >= {args.min_samples} of {len(quants)} libraries"
 text = "\n".join([
     f"expression filter: {rule}",
     f"  transcripts kept    : {kept_seqs:,}",

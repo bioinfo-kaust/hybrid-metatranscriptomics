@@ -6,9 +6,13 @@ the reference ladder (`isoseq` … `all_sources_dedup`, and `<dge_reference>_exp
 expression filter); `<sample>` is a library from `--input` or `--assembly_input`.
 
 The expression filter runs **before** the annotation, so `<dge_reference>_expressed` is the set the
-annotation, the published quantification, DESeq2, enrichment and the figures all describe. The
-ladder's own FASTAs, seqkit stats and BUSCO summaries still cover every rung, so the transcript
-count and the completeness quoted for the assembly describe the larger, unfiltered set.
+annotation, the published quantification, DESeq2, enrichment and the figures all describe. It is
+also what the dashboard and `run_summary.txt` lead with: the headline transcript count and the
+headline BUSCO are that set's, because it is the denominator every other reported number shares.
+The ladder's own FASTAs, seqkit stats and BUSCO summaries still cover every rung, and the
+assembly's larger count and its own completeness score are reported beside the analysed set on the
+Reference tab — the assembly's BUSCO says how complete the reconstruction is, the analysed set's
+says how much of the conserved gene space this experiment actually expressed.
 
 Directories for steps that did not run (a missing genome, no contaminant genomes, `--skip_*`) are
 simply absent.
@@ -71,6 +75,7 @@ host-only long reads, and `audit/` — the residual-contamination audit of each 
 | `<set>.filter.txt`, `<set>.de_eligible_tx.txt` | Expression-filter log and the transcripts it kept (the analysed set) |
 | `qc/<set>.stats.tsv` | seqkit statistics per rung |
 | `qc/<set>.busco.txt`, `qc/short_summary.*`, `qc/*-busco.batch_summary.txt` | BUSCO per rung (`NA` when BUSCO failed) |
+| `qc/<set>.full_table.tsv` | which BUSCO ortholog each sequence of that rung carries. Sequence ids are the serial ids BUSCO was given (`t1..tN` in the rung FASTA's own order), so the FASTA resolves them back to transcripts. This is what an external gene-map identity evaluation uses as label-free truth |
 | `qc/route_contribution.tsv` | What each assembly source added to the ladder |
 | `qc/sqanti3_isoseq*` | SQANTI3 structural classification of the long-read models |
 

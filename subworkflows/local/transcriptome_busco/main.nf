@@ -26,17 +26,24 @@ workflow TRANSCRIPTOME_BUSCO {
         [],
         true)
     // every set gets a line: a BUSCO that failed (errorStrategy ignore) or wrote no summary
-    // reports NA instead of silently holding up everything that waits on the summary
+    // reports NA instead of silently holding up everything that waits on the summary.
+    // The full ortholog table rides along on the same join, for the same reason — a rung without
+    // one must not stall the rungs that have one.
     BUSCO_SUMMARY(
         ch_fasta
             .map { meta, _fa -> [ meta.id, meta ] }
             .join(BUSCO_BUSCO.out.short_summaries_txt.map { meta, txt -> [ meta.id, txt ] }, remainder: true)
-            .filter { _id, meta, _txt -> meta != null }
-            .map { _id, meta, txt -> [ meta, txt ?: [] ] }
+            .join(BUSCO_BUSCO.out.full_table.map { meta, ft -> [ meta.id, ft ] }, remainder: true)
+            .filter { _id, meta, _txt, _ft -> meta != null }
+            .map { _id, meta, txt, ft -> [ meta, txt ?: [], ft ?: [] ] }
     )
 
     emit:
     summary = BUSCO_SUMMARY.out.summary                 // [ meta, <id>.busco.txt ]
+    // which ortholog each sequence carries: the label-free truth the gene-map evaluation uses.
+    // Ids are BUSCO_RENAME's serial ids, resolved through the input FASTA's own order.
+    // Taken from BUSCO_SUMMARY, not BUSCO_BUSCO: see that module's header for why.
+    full_table = BUSCO_SUMMARY.out.full_table           // [ meta, <id>.full_table.tsv ]
     // only the specific-lineage summaries: MultiQC parses these, and the generic ones repeat them
     mqc     = BUSCO_BUSCO.out.short_summaries_txt
         .flatMap { _meta, files -> [files].flatten() }

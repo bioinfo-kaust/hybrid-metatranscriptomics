@@ -109,15 +109,35 @@ for (f in de_files) {
   sig <- rownames(det)[det$padj < padj_cut & abs(det$log2FoldChange) >= lfc_cut]
   cat(nm, "- sig genes:", length(sig), "of", nrow(det), "tested\n")
 
-  if (length(sig) >= 5 && !is.null(go2gene)) {
+  # Gate ORA on the genes it will actually query -- the significant genes that CARRY a term --
+  # not on the significant genes. The two differ sharply for a near-null contrast, and gating on
+  # the wrong one produces a result that looks like a finding and is not: measured on this data,
+  # a contrast with 5 significant genes of which 1 was annotated returned 38 GO terms, every one
+  # at GeneRatio 1/1 and all sharing one p.adjust, because with a single-gene query every term
+  # that gene carries is "enriched" against a 13,272-gene background and BH over 38 tests adjusts
+  # almost nothing away. Requiring MIN_ORA annotated genes makes the query, not the shortlist,
+  # the thing that has to be big enough to test.
+  MIN_ORA <- 5
+  ora_input <- function(map) if (is.null(map)) character(0) else intersect(sig, unique(map$gene))
+
+  go_sig <- ora_input(go2gene)
+  if (length(go_sig) >= MIN_ORA) {
     write_res(tryCatch(enricher(sig, TERM2GENE = go2gene[, c("term", "gene")], TERM2NAME = t2name,
                                 universe = universe, pvalueCutoff = 1, qvalueCutoff = 1),
                        error = function(e) NULL), nm, "GO_ORA")
+  } else if (length(sig) >= MIN_ORA) {
+    cat("   GO_ORA skipped:", length(go_sig), "of", length(sig),
+        "significant genes carry a GO term (need", MIN_ORA, ")\n")
   }
-  if (length(sig) >= 5 && !is.null(ko2gene)) {
+
+  ko_sig <- ora_input(ko2gene)
+  if (length(ko_sig) >= MIN_ORA) {
     write_res(tryCatch(enricher(sig, TERM2GENE = ko2gene[, c("term", "gene")], TERM2NAME = k2name,
                                 universe = universe, pvalueCutoff = 1, qvalueCutoff = 1),
                        error = function(e) NULL), nm, "KEGG_ORA")
+  } else if (length(sig) >= MIN_ORA) {
+    cat("   KEGG_ORA skipped:", length(ko_sig), "of", length(sig),
+        "significant genes carry a KEGG KO (need", MIN_ORA, ")\n")
   }
   if (!is.null(go2gene)) {
     # rank on the Wald statistic: it carries the evidence, where a fold change alone is dominated

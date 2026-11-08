@@ -12,9 +12,11 @@ data is dropped. That keeps the dashboard honest for partial runs.
 Usage: build_dashboard.py --dir <staged inputs> [--manifest run_manifest.json] --out index.html
 """
 import argparse
+import array
 import base64
 import csv
 import glob
+import gzip
 import json
 import math
 import os
@@ -245,6 +247,52 @@ for _st in sorted(glob.glob(path("*_expressed.stats.tsv"))):
         "busco": parse_busco(open(_bp).read()) if exists(_bp) else None,
     })
 
+# ------------------------------------------------- gene-map evaluation (optional, if staged)
+# Which transcript->gene map is primary is a parameter, and the pipeline cannot settle it from its
+# own outputs: deciding needs INDEPENDENT truth (marker orthologs, a reference genome's gene
+# models) and a label-permutation null. Those come from an external evaluation, so the dashboard
+# renders this card only when that evaluation is staged beside the run's own tables. Any project
+# that supplies the same two files gets the card; nothing here is specific to one species.
+#
+#   genemap_eval.tsv : one row per (map, truth)  -- map, truth, F1, ARI, split_pct, merge_pct,
+#                      genes_per_label, fused_pct  (extra columns are ignored)
+#   genemap_null.tsv : one row per map           -- map, false_calls_mean, n_perms
+genemap_eval = []
+_ge = first_glob("genemap_eval.tsv") or first_glob("*/genemap_eval.tsv")
+if _ge:
+    for r in read_tsv(os.path.basename(_ge)) or []:
+        def _f(k):
+            v = (r.get(k) or "").strip()
+            try:
+                return float(v)
+            except ValueError:
+                return None
+        if r.get("map") and r.get("truth"):
+            genemap_eval.append({
+                "map": r["map"].strip(), "truth": r["truth"].strip(),
+                "f1": _f("F1"), "ari": _f("ARI"), "split": _f("split_pct"),
+                "merge": _f("merge_pct"), "gpl": _f("genes_per_label"),
+                "fused": _f("fused_pct"),
+            })
+
+genemap_null = {}
+_gn = first_glob("genemap_null.tsv") or first_glob("*/genemap_null.tsv")
+if _gn:
+    for r in read_tsv(os.path.basename(_gn)) or []:
+        if r.get("map"):
+            try:
+                genemap_null[r["map"].strip()] = {
+                    "false_calls": float(r["false_calls_mean"]),
+                    "n_perms": int(float(r.get("n_perms") or 0)),
+                }
+            except (ValueError, KeyError):
+                pass
+
+genemap_verdict = ""
+_gv = first_glob("genemap_verdict.txt") or first_glob("*/genemap_verdict.txt")
+if _gv:
+    genemap_verdict = open(_gv).read().strip()
+
 # ------------------------------------------------------------------ annotation
 annot_summary = []
 sp = first_glob("annotation.*summary*.txt")
@@ -389,6 +437,295 @@ def map_outputs(prefix):
     dirs = [f"{prefix}/" if k == "string" else f"{prefix}_{k}/"
             for k in MAP_KINDS if map_dir(prefix, k)]
     return " · ".join(dirs) or f"{prefix}/"
+
+# ------------------------------------------- the expression matrices, for the Explorer tab
+# Everything above reports numbers the pipeline already computed. This block ships the matrices
+# THEMSELVES so the page can answer a question nobody wrote a figure for: what does gene X do
+# across the 15 libraries, which transcripts of it carry the signal, and does a call survive
+# dropping the fold-change shrinkage.
+#
+# Three decisions keep that from bloating the page:
+#   1. Quantise. Expression goes in as uint16 log2(value + 1) * 1000 — 0.001 of a log2 unit, far
+#      finer than the measurement — and DE statistics as int16 at 1/100, with -32768 for "not
+#      tested". Raw doubles as JSON would be ~8x this and carry no extra information.
+#   2. Dictionary-encode the annotation. 44,461 transcripts share ~12,500 distinct descriptions,
+#      so each row stores an index into one string table.
+#   3. gzip + base64 every array, and decompress in the browser on first use. The page stays one
+#      file that works from file://, and the Explorer's cost is only paid if the tab is opened.
+#
+# Row order is the canonical index for a map: normalized_counts.csv's order, which DESeq2 also
+# wrote the DE tables in, so one gene is one row across counts and every contrast without a join.
+EXPR_SCALE = 1000          # uint16 counts = log2(x + 1) * EXPR_SCALE
+# The DE statistics are int32, not int16, and the reason is the decision boundary. The page
+# recomputes "significant" live from these arrays, under the same rule deseq2.R applied
+# (padj < alpha AND |log2FC| > lfc_cut). At 1/100 of a log2 unit a gene whose fold change is
+# really 1.0049 is stored as 1.00 and quietly stops being significant, and the page's count then
+# disagrees with DE_summary.csv by a gene or two — measured on this run, not hypothetical. 1e-4 on
+# the fold change and 1e-5 on -log10(padj) put the rounding far below the width of the decision.
+LFC_SCALE = 10000          # int32: log2 fold change, shrunken and unshrunken
+MLP_SCALE = 100000         # int32: -log10(padj), the same 5 decimals load_dge() settled on
+BASE_SCALE = 100           # int32: log2(baseMean + 1), only ever displayed
+DE_NA = -2147483648        # "DESeq2 did not test this gene in this contrast"
+_I32_MAX = 2147483000      # leaves DE_NA unambiguous
+
+
+def _gz_b64(raw):
+    return base64.b64encode(gzip.compress(raw, 9)).decode("ascii")
+
+
+# The browser reads these as Uint16Array / Int16Array / Int32Array / Uint8Array, so the widths
+# have to be exactly 2/2/4/1 bytes. CPython's `array` sizes 'i' and 'I' by the C int, so assert
+# rather than assume: a platform where that differs would produce a silently mis-parsed page.
+_WIDTH = {"H": 2, "h": 2, "i": 4, "I": 4, "B": 1}
+
+
+def _enc(typecode, values):
+    """A typed array as gzip+base64, always little-endian (what every browser reads)."""
+    a = array.array(typecode, values)
+    if a.itemsize != _WIDTH[typecode]:
+        raise SystemExit(f"[ERROR] array '{typecode}' is {a.itemsize} bytes here, "
+                         f"not {_WIDTH[typecode]}: the dashboard's typed arrays would misparse")
+    if sys.byteorder == "big":
+        a.byteswap()
+    return _gz_b64(a.tobytes())
+
+
+def _enc_text(lines):
+    return _gz_b64(("\n".join(lines)).encode("utf-8"))
+
+
+def _q_expr(v):
+    q = int(round(math.log2(max(v, 0.0) + 1.0) * EXPR_SCALE))
+    return 0 if q < 0 else (65535 if q > 65535 else q)
+
+
+def _q_de(v, scale):
+    q = int(round(v * scale))
+    return -_I32_MAX if q < -_I32_MAX else (_I32_MAX if q > _I32_MAX else q)
+
+
+# ---- the string table every row's description points into
+desc_list, desc_id = [], {}
+
+
+def _desc_ix(text):
+    if not text:
+        return -1
+    ix = desc_id.get(text)
+    if ix is None:
+        ix = desc_id[text] = len(desc_list)
+        desc_list.append(text)
+    return ix
+
+
+# transcript -> (description index, interest flag), read from the transcript-level annotation
+tx_desc, tx_flag = {}, {}
+if annot_path:
+    with open(annot_path, newline="") as fh:
+        for r in csv.DictReader(fh, delimiter="\t"):
+            t = r.get("transcript")
+            if not t:
+                continue
+            d = (r.get("protein_desc") or r.get("eggnog_desc") or "").split(" OS=")[0][:90]
+            if d:
+                tx_desc[t] = _desc_ix(d)
+            if r.get(interest_label):
+                tx_flag[t] = 1
+
+
+def _read_matrix(csv_path):
+    """normalized_counts.csv / vst_counts.csv -> (sample names, row ids, quantised values)."""
+    ids, vals = [], array.array("H")
+    with open(csv_path, newline="") as fh:
+        rd = csv.reader(fh)
+        header = next(rd, None)
+        if not header:
+            return None
+        cols = [c for c in header[1:]]
+        for row in rd:
+            if not row or len(row) < 2:
+                continue
+            ids.append(row[0])
+            for v in row[1:len(cols) + 1]:
+                vals.append(_q_expr(num(v)))
+    return cols, ids, vals
+
+
+def _load_de_arrays(dirpath, index_of):
+    """Per contrast: shrunken LFC, the unshrunken LFC beside it, -log10(padj) and baseMean,
+    every array in the map's canonical row order so the page can switch between them."""
+    out = {}
+    n = len(index_of)
+    for f in sorted(glob.glob(os.path.join(dirpath, "DE_*.csv"))):
+        if os.path.basename(f) == "DE_summary.csv":
+            continue
+        name = os.path.basename(f)[3:-4]
+        lfc = array.array("i", [DE_NA]) * n
+        raw = array.array("i", [DE_NA]) * n
+        mlp = array.array("i", [DE_NA]) * n
+        base = array.array("i", [DE_NA]) * n
+        seen = 0
+        with open(f, newline="") as fh:
+            rd = csv.DictReader(fh)
+            key = (rd.fieldnames or [""])[0]
+            has_raw = "log2FoldChange_unshrunken" in (rd.fieldnames or [])
+            for r in rd:
+                ix = index_of.get(r.get(key))
+                if ix is None:
+                    continue
+                padj = r.get("padj")
+                if padj in (None, "", "NA"):
+                    continue          # left at DE_NA: independent filtering or a Cook's outlier
+                seen += 1
+                pa = max(num(padj, 1.0), 1e-300)
+                lfc[ix] = _q_de(num(r.get("log2FoldChange")), LFC_SCALE)
+                raw[ix] = (_q_de(num(r.get("log2FoldChange_unshrunken")), LFC_SCALE)
+                           if has_raw else DE_NA)
+                mlp[ix] = _q_de(-math.log10(pa), MLP_SCALE)
+                base[ix] = _q_de(math.log2(num(r.get("baseMean")) + 1.0), BASE_SCALE)
+        if not seen:
+            continue
+        out[name] = {
+            "lfc": _enc("i", lfc), "mlp": _enc("i", mlp), "base": _enc("i", base),
+            "raw": _enc("i", raw) if has_raw else None, "tested": seen,
+        }
+    return out
+
+
+explorer = None
+_expl_maps, _expl_samples, _expl_cols = {}, [], []
+for _kind in MAP_KINDS:
+    _dd = map_dir("dge", _kind)
+    if not _dd:
+        continue
+    _m = _read_matrix(os.path.join(_dd, "normalized_counts.csv"))
+    if not _m:
+        continue
+    _cols, _ids, _vals = _m
+    if not _expl_cols:
+        _expl_cols = _cols
+    elif _cols != _expl_cols:
+        # every map is quantified on the same libraries; if that ever stops being true the
+        # matrices cannot share one column order, and shipping them anyway would mislabel columns
+        print(f"[dashboard] explorer: {_kind} map has different libraries, skipped", file=sys.stderr)
+        continue
+    _index_of = {g: n for n, g in enumerate(_ids)}
+    # transcript -> gene row, from the map this DESeq2 run actually used
+    _t2g = os.path.join(_dd, "tx2gene.used.tsv")
+    _gene_desc = [-1] * len(_ids)
+    _gene_flag = [0] * len(_ids)
+    _tx_of_gene = defaultdict(list)
+    if os.path.exists(_t2g):
+        with open(_t2g) as fh:
+            for line in fh:
+                p = line.rstrip("\n").split("\t")
+                if len(p) < 2:
+                    continue
+                ix = _index_of.get(p[1])
+                if ix is None:
+                    continue
+                _tx_of_gene[ix].append(p[0])
+                if _gene_desc[ix] < 0 and p[0] in tx_desc:
+                    _gene_desc[ix] = tx_desc[p[0]]
+                if p[0] in tx_flag:
+                    _gene_flag[ix] = 1
+    _expl_maps[_kind] = {
+        "label": {"string": "String-stripped ids", "corset": "Corset",
+                  "locus": "Locus rebuild"}[_kind],
+        "n": len(_ids),
+        "ids": _enc_text(_ids),
+        "counts": _enc("H", _vals),
+        "desc": _enc("i", _gene_desc),
+        "flag": _enc("B", _gene_flag),
+        "ntx": _enc("I", [len(_tx_of_gene.get(n, ())) for n in range(len(_ids))]),
+        "de": _load_de_arrays(_dd, _index_of),
+        "t2g_rows": sum(len(v) for v in _tx_of_gene.values()),
+    }
+    # the transcript -> gene row map, for the isoform view. Written once per map, against the
+    # transcript order established below.
+    _expl_maps[_kind]["_tx_of_gene"] = _tx_of_gene
+
+# ---- transcript level: salmon's own TPM, the quantity the expression filter was applied to
+_quant_dirs = sorted(
+    d for d in glob.glob(path("*"))
+    if os.path.isdir(d) and os.path.exists(os.path.join(d, "quant.sf"))
+)
+_tx_payload = None
+if _quant_dirs and _expl_cols:
+    _by_name = {os.path.basename(d): d for d in _quant_dirs}
+    _missing = [c for c in _expl_cols if c not in _by_name]
+    if _missing:
+        print(f"[dashboard] explorer: no quant.sf for {', '.join(_missing[:3])}"
+              f"{'...' if len(_missing) > 3 else ''}; transcript level omitted", file=sys.stderr)
+    else:
+        _tx_ids, _tx_ix = [], {}
+        _per_sample = []
+        for _c in _expl_cols:
+            _vals_s = {}
+            with open(os.path.join(_by_name[_c], "quant.sf"), newline="") as fh:
+                rd = csv.DictReader(fh, delimiter="\t")
+                for r in rd:
+                    nm = r["Name"]
+                    if nm not in _tx_ix:
+                        _tx_ix[nm] = len(_tx_ids)
+                        _tx_ids.append(nm)
+                    _vals_s[nm] = num(r.get("TPM"))
+            _per_sample.append(_vals_s)
+        _ntx, _ns = len(_tx_ids), len(_expl_cols)
+        _tpm = array.array("H", [0]) * (_ntx * _ns)
+        for _j, _vals_s in enumerate(_per_sample):
+            for _nm, _v in _vals_s.items():
+                _tpm[_tx_ix[_nm] * _ns + _j] = _q_expr(_v)
+        _tx_payload = {
+            "n": _ntx,
+            "ids": _enc_text(_tx_ids),
+            "tpm": _enc("H", _tpm),
+            "desc": _enc("i", [tx_desc.get(t, -1) for t in _tx_ids]),
+            "flag": _enc("B", [tx_flag.get(t, 0) for t in _tx_ids]),
+        }
+        # per map, the gene row each transcript belongs to (-1 = not in that map's model)
+        for _kind, _mp in _expl_maps.items():
+            _owner = [-1] * _ntx
+            for _grow, _txs in _mp.pop("_tx_of_gene").items():
+                for _t in _txs:
+                    _jx = _tx_ix.get(_t)
+                    if _jx is not None:
+                        _owner[_jx] = _grow
+            _mp["tx_gene"] = _enc("i", _owner)
+for _mp in _expl_maps.values():
+    _mp.pop("_tx_of_gene", None)
+
+if _expl_maps:
+    _cond_of = {}
+    for _kind in MAP_KINDS:
+        _d = dge_by_map.get(_kind)
+        if _d:
+            for _p in _d.get("pca", []):
+                if _p.get("name") and _p.get("group"):
+                    _cond_of.setdefault(_p["name"], _p["group"])
+    _expl_samples = [{"name": c, "condition": _cond_of.get(c, "")} for c in _expl_cols]
+    _conds = []
+    for _s in _expl_samples:
+        if _s["condition"] and _s["condition"] not in _conds:
+            _conds.append(_s["condition"])
+    explorer = {
+        "scale": EXPR_SCALE, "na": DE_NA, "lfc_scale": LFC_SCALE,
+        "mlp_scale": MLP_SCALE, "base_scale": BASE_SCALE,
+        # the rule deseq2.R applied, so the page's live counts start where DE_summary.csv does
+        "alpha": num(P("de_alpha", 0.05), 0.05) or 0.05,
+        "lfc_cut": num(P("de_lfc", 1.0), 1.0),
+        "samples": _expl_samples, "conditions": _conds,
+        "desc_table": _enc_text(desc_list),
+        "interest_label": interest_label,
+        "maps": _expl_maps,
+        "tx": _tx_payload,
+        "primary": primary_map,
+    }
+    print(f"[dashboard] explorer: maps {sorted(_expl_maps)} · "
+          f"genes {[(k, v['n']) for k, v in sorted(_expl_maps.items())]} · "
+          f"transcripts {_tx_payload['n'] if _tx_payload else 0} · "
+          f"descriptions {len(desc_list)}")
+
 
 # ------------------------------------------------------------------ enrichment
 def load_enrichment(dirpath):
@@ -634,17 +971,39 @@ def de_total(d):
 
 
 if corset and corset.get("stripped"):
-    gene_maps.append({"primary": primary_map == "string", "name": "String-stripped ids", "basis": "per-source naming rules",
+    gene_maps.append({"key": "string", "primary": primary_map == "string", "name": "String-stripped ids", "basis": "per-source naming rules",
                       "genes": corset["stripped"], "sig": de_total(dge), "seqs": gene_seqs.get("string"),
                       "note": "the default map; cannot reconcile identity ACROSS assembly sources"})
 if corset and corset.get("clusters"):
-    gene_maps.append({"primary": primary_map == "corset", "name": "Corset", "basis": "shared reads + expression",
+    gene_maps.append({"key": "corset", "primary": primary_map == "corset", "name": "Corset", "basis": "shared reads + expression",
                       "genes": corset["clusters"], "sig": de_total(dge_corset), "seqs": gene_seqs.get("corset"),
                       "note": "clusters contigs by the reads they share, not by sequence identity"})
 if locus and locus.get("after"):
-    gene_maps.append({"primary": primary_map == "locus", "name": "Locus rebuild", "basis": "genomic coordinates",
+    gene_maps.append({"key": "locus", "primary": primary_map == "locus", "name": "Locus rebuild", "basis": "genomic coordinates",
                       "genes": locus["after"], "sig": de_total(dge_locus), "seqs": gene_seqs.get("locus"),
                       "note": "groups transcripts sharing a splice junction on the genome"})
+
+# The gene count the headline quotes has to be the PRIMARY map's. The expression filter writes a
+# gene count in its own log, but it counts the map it was handed — the string-stripped one — so
+# quoting that next to a locus-primary run overstates the gene count by every split the locus
+# rebuild reconciles (5,144 genes on this dataset, 34,853 against 29,709).
+_primary_genes = next((m["genes"] for m in gene_maps if m.get("primary")), None)
+_primary_name = next((m["name"] for m in gene_maps if m.get("primary")), None)
+
+# The annotation module counts genes from the tx2gene it was HANDED — the string-stripped one,
+# because annotation runs before the locus rebuild and the rebuild needs the genome placement.
+# Every other row of that summary is a per-transcript count and is therefore identical under any
+# gene map; the gene row is the only one that moves. So label it for what it is and put the primary
+# map's own count beside it, instead of leaving a reader to assume it matches the headline.
+if _primary_genes and _primary_name:
+    for _k, _row in enumerate(annot_summary):
+        if _row["label"].strip().lower() != "genes":
+            continue
+        _row["label"] = "genes (string-stripped)"
+        if _row["value"] != _primary_genes:
+            annot_summary.insert(_k + 1, {"label": f"genes ({_primary_name.lower()}, primary)",
+                                          "value": _primary_genes})
+        break
 
 # ---- the three DE branches, for the methods diagram
 # The Genes tab already switches between the maps, but the diagram has to show all three side by
@@ -705,6 +1064,28 @@ ref_row = next((r for r in ladder if r["reference"] == ref_set), None) or (ladde
 # tested. Absent when the filter is off (expr_filter_tpm = 0), in which case ref_row IS the
 # analysed set.
 de_row = next((r for r in ladder if r["reference"] == f"{ref_set}_expressed"), None)
+
+# ------------------------------------------------------------------ expression filter
+# The filter log is the only place the kept/dropped accounting and the DE-eligible count are
+# written down. Parsed rather than recomputed so the dashboard cannot disagree with the pipeline.
+expr_filter = {}
+_ef = first_glob("transcriptome/*_expressed.filter.txt") or first_glob("*_expressed.filter.txt")
+if _ef:
+    _txt = open(_ef).read()
+    def _ef_num(pat):
+        m = re.search(pat, _txt)
+        return int(m.group(1).replace(",", "")) if m else None
+    expr_filter = {
+        "rule":      (re.search(r"expression filter:\s*(.+)", _txt).group(1).strip()
+                      if re.search(r"expression filter:\s*(.+)", _txt) else ""),
+        "kept":      _ef_num(r"transcripts kept\s*:\s*([\d,]+)"),
+        "dropped":   _ef_num(r"transcripts dropped\s*:\s*([\d,]+)"),
+        "eligible":  _ef_num(r"DE-eligible transcripts\s*:\s*([\d,]+)"),
+    }
+    _g = re.search(r"genes\s+([\d,]+)\s*->\s*([\d,]+)", _txt)
+    if _g:
+        expr_filter["genes_before"] = int(_g.group(1).replace(",", ""))
+        expr_filter["genes_after"] = int(_g.group(2).replace(",", ""))
 
 total_in = sum(s["reads_in"] for s in samples)
 total_kept = sum(s["kept"] for s in samples)
@@ -875,19 +1256,41 @@ if contam_src and on("skip_decontam"):
 if ref_row:
     genes = ref_row.get("genes")
     locus_after = locus.get("after") if locus else None
+    # BUSCO is quoted for the analysed set, falling back to the assembly only when no filter ran
+    # (in which case they are the same set)
+    _busco_row = de_row if (de_row and de_row.get("busco")) else ref_row
+    _busco = _busco_row.get("busco")
+    # lead with the primary map, like the headline; the string-stripped count follows as the
+    # upper bound it is
+    _an_genes = _primary_genes or expr_filter.get("genes_after") or genes
+    _an_genes_src = _primary_name if _primary_genes else "string-stripped ids"
     block("transcriptome", "Reference transcriptome", "product",
           f"{ref_set} · {len(ladder)} variant{'s' if len(ladder) != 1 else ''} built and scored",
-          [R("transcripts", fmt(ref_row["transcripts"])),
-           # the number most of this dashboard is actually about: what survived the filter and
-           # was therefore annotated, quantified and tested
-           R("analysed set", fmt(de_row["transcripts"]) if de_row else "",
-             "after the expression filter: annotated, quantified and tested" if de_row else ""),
-           R("genes", fmt(genes) if genes else "",
-             f"upper bound; {fmt(locus_after)} by genomic locus" if locus_after else "from string-stripped ids"),
-           R("N50", fmt(ref_row["n50"]) if ref_row.get("n50") else ""),
+          [R("transcripts analysed",
+             fmt(de_row["transcripts"]) if de_row else fmt(ref_row["transcripts"]),
+             "after the expression filter: annotated, quantified and tested" if de_row
+             else "no expression filter ran, so the assembly is the analysed set"),
+           R("genes", fmt(_an_genes) if _an_genes else "",
+             " · ".join(x for x in [
+                 f"by {_an_genes_src.lower()}, the primary map" if _primary_genes else _an_genes_src,
+                 (f"{fmt(expr_filter['genes_after'])} by string-stripped ids, an upper bound"
+                  if expr_filter.get("genes_after")
+                  and expr_filter.get("genes_after") != _an_genes else ""),
+             ] if x)),
+           # completeness for the set that was actually analysed; the assembly's own score sits on
+           # the row below, so the two can never be read as one number
            R("BUSCO complete",
-             f"{ref_row['busco']['complete']:.1f}%" if ref_row.get("busco") else "",
-             f"{P('busco_lineage', '')} · duplicated {ref_row['busco']['dup']:.1f}%" if ref_row.get("busco") else ""),
+             f"{_busco['complete']:.1f}%" if _busco else "",
+             (f"{P('busco_lineage', '')} · duplicated {_busco['dup']:.1f}% · measured on "
+              f"{_busco_row['reference']}") if _busco else ""),
+           R("the assembly, before the filter",
+             fmt(ref_row["transcripts"]) if de_row else "",
+             (" · ".join(x for x in [
+                 f"N50 {fmt(ref_row['n50'])}" if ref_row.get("n50") else "",
+                 (f"BUSCO {ref_row['busco']['complete']:.1f}% complete"
+                  if ref_row.get("busco") else ""),
+             ] if x)) if de_row else ""),
+           R("N50", fmt(ref_row["n50"]) if (ref_row.get("n50") and not de_row) else ""),
            R("sources combined", str(len(ladder)), "each layered on and measured separately")],
           "reference")
 
@@ -917,7 +1320,28 @@ if dge_primary:
           "expression")
 
 # ---- the headline figure: whatever this run's main product is ----------------------
-if ref_row:
+# The analysed set leads, not the assembly. It is what was annotated, quantified and tested, so it
+# is the denominator every other number on this page shares; heading the page with the assembly's
+# larger count invites the reader to scale the DE and annotation counts against a set that was
+# never tested. The assembly keeps its own row on the Reference tab, and is named here as the set
+# this one was filtered out of.
+if de_row:
+    # the primary map's gene count, named, falling back to the filter's own (string-stripped) count
+    # only when no gene map reported one — and saying which it is either way, because the two
+    # differ by thousands and an unlabelled gene count beside a named primary map reads as that
+    # map's
+    _hero_genes = _primary_genes if _primary_genes else expr_filter.get("genes_after")
+    _hero_genes_src = _primary_name if _primary_genes else "string-stripped ids"
+    hero = {"value": fmt(de_row["transcripts"]),
+            "label": "transcripts analysed — annotated, quantified and tested",
+            "sub": " · ".join(x for x in [
+                de_row["reference"],
+                f"{fmt(_hero_genes)} genes ({_hero_genes_src})" if _hero_genes else "",
+                (f"BUSCO {de_row['busco']['complete']:.1f}% complete"
+                 if de_row.get("busco") else ""),
+                (f"filtered from {fmt(ref_row['transcripts'])} assembled" if ref_row else ""),
+            ] if x)}
+elif ref_row:
     hero = {"value": fmt(ref_row["transcripts"]), "label": "transcripts in the assembled transcriptome",
             "sub": f"{ref_set} · {fmt(ref_row['genes']) if ref_row.get('genes') else '—'} genes"
                    + (f" · BUSCO {ref_row['busco']['complete']:.1f}% complete" if ref_row.get("busco") else "")}
@@ -943,29 +1367,6 @@ def M(label, value):
 
 
 stages = []
-
-
-# ------------------------------------------------------------------ expression filter
-# The filter log is the only place the kept/dropped accounting and the DE-eligible count are
-# written down. Parsed rather than recomputed so the dashboard cannot disagree with the pipeline.
-expr_filter = {}
-_ef = first_glob("transcriptome/*_expressed.filter.txt") or first_glob("*_expressed.filter.txt")
-if _ef:
-    _txt = open(_ef).read()
-    def _ef_num(pat):
-        m = re.search(pat, _txt)
-        return int(m.group(1).replace(",", "")) if m else None
-    expr_filter = {
-        "rule":      (re.search(r"expression filter:\s*(.+)", _txt).group(1).strip()
-                      if re.search(r"expression filter:\s*(.+)", _txt) else ""),
-        "kept":      _ef_num(r"transcripts kept\s*:\s*([\d,]+)"),
-        "dropped":   _ef_num(r"transcripts dropped\s*:\s*([\d,]+)"),
-        "eligible":  _ef_num(r"DE-eligible transcripts\s*:\s*([\d,]+)"),
-    }
-    _g = re.search(r"genes\s+([\d,]+)\s*->\s*([\d,]+)", _txt)
-    if _g:
-        expr_filter["genes_before"] = int(_g.group(1).replace(",", ""))
-        expr_filter["genes_after"] = int(_g.group(2).replace(",", ""))
 
 
 def stage(sid, name, group, tool, ran, why, arglist, metrics, out=None):
@@ -1077,16 +1478,25 @@ stage("filter", "Expression filter", "Expression", "salmon pass 1 + filter_by_ex
       "this point runs on that one set: it is what gets annotated, re-quantified, tested and drawn, "
       "so no number on this dashboard has to be qualified with which reference it came from. What "
       "the filter does NOT touch is the assembly — every ladder rung keeps its own FASTA, stats and "
-      "BUSCO summary, so the transcript count and the completeness quoted for the transcriptome are "
-      "still properties of the full deduplicated set.",
+      "BUSCO summary, and the assembly's own count and completeness stay on the Reference tab. The "
+      "headline count and the headline BUSCO are the analysed set's, because that is the set every "
+      "other number on this page describes.",
       [f"expressed: TPM >= {P('expr_filter_tpm', 1)} in >= {P('expr_filter_samples', 3)} libraries",
        "a presence rule, not a mean: a transcript on in one group and off elsewhere survives",
        "nothing is rescued on homology: measured on this data that added 0 DE genes and 0.13 pts "
        "of mapping, while costing 4.2 pts of BUSCO duplication"],
       [M("the analysed set", fmt(expr_filter["kept"]) if expr_filter.get("kept") else "—"),
        M("dropped", fmt(expr_filter["dropped"]) if expr_filter.get("dropped") else "—"),
-       M("genes", fmt(expr_filter["genes_after"]) if expr_filter.get("genes_after") else "—"),
-       M("BUSCO complete", f"{de_row['busco']['complete']:.1f}%" if de_row and de_row["busco"] else "—")],
+       # The filter is handed the string-stripped map, so its log reports that map's count and not
+       # the primary map's — and the two differ by thousands. The set the filter KEEPS is the
+       # analysed set, which is exactly the set the locus rebuild is defined on, so the primary
+       # map's count for it is available and is shown beside it rather than left to be inferred.
+       M("genes (string-stripped)",
+         fmt(expr_filter["genes_after"]) if expr_filter.get("genes_after") else "—")]
+      + ([M(f"genes ({_primary_name.lower()}, primary)", fmt(_primary_genes))]
+         if _primary_genes and _primary_name
+         and _primary_genes != expr_filter.get("genes_after") else [])
+      + [M("BUSCO complete", f"{de_row['busco']['complete']:.1f}%" if de_row and de_row["busco"] else "—")],
       "transcriptome/")
 
 stage("annot", "Functional annotation", "Annotation",
@@ -1105,7 +1515,16 @@ stage("annot", "Functional annotation", "Annotation",
 stage("quant", "Quantification", "Expression", "salmon", True,
       "Selective alignment against a decoy-aware index (the genome is the decoy), which stops reads "
       "from genomic or unassembled regions being forced onto a transcript. Library type is "
-      "auto-detected and reported, not assumed.",
+      "auto-detected and reported, not assumed. "
+      "NOT bit-reproducible, and this is the limit on how exactly any number downstream of it can "
+      "be repeated: `salmon index -p 16` builds pufferfish's position table in parallel, so from a "
+      "byte-identical reference FASTA and an identical command it produces a different seq.bin / "
+      "pos.bin / ctable.bin (every summary figure in its own log identical). Quantification then "
+      "redistributes multi-mapping reads between near-identical transcripts. Measured across two "
+      "runs of this reference: total assigned reads per library exactly equal, 27% of transcripts "
+      "given a different count, but only 0.5% moved by more than 1% and 0.04% by more than half. "
+      "A handful move enough to carry a gene over the significance cut, so a re-run reproduces the "
+      "DE counts to within a gene or two rather than exactly.",
       ["salmon index -d <genome decoys> -k 31",
        "salmon quant -l A --gcBias --seqBias --dumpEq --numBootstraps 30",
        "the reported pass; the earlier pass on the deduplicated set only fed the filter"],
@@ -1152,10 +1571,19 @@ stage("locus", "Gene identity from genomic loci", "Genes", "minimap2 + bedtools"
       "String-stripped transcript ids apply a different rule per assembly source and reconcile nothing "
       "ACROSS sources, so one locus recovered by three sources counts three times. This places every "
       "transcript on the genome and groups connected components sharing a splice junction. It halves "
-      "the split-gene problem and roughly doubles gene fusion — both directions are measured below.",
-      [f"grouping = {P('locus_groupby', 'junction')}",
-       f"minimum transcript coverage = {P('locus_mincov', 0.8)}",
-       f"single-exon attach threshold = {P('locus_se_overlap', 0.5)}"],
+      "the split-gene problem and roughly doubles gene fusion — both directions are measured below. "
+      "A single-exon transcript has no junction to share and so cannot be grouped that way: it is "
+      "attached to the multi-exon locus it sits inside, and single-exon transcripts with no such "
+      "host are then clustered among themselves by overlap. A transcript that fails the coverage "
+      "cut, or that does not align at all, is kept as a gene of its own rather than dropped.",
+      [f"grouping = {P('locus_groupby', 'junction')} — link two transcripts that share an identical "
+       "(scaffold, strand, donor, acceptor) junction, then take connected components",
+       f"minimum transcript coverage = {P('locus_mincov', 0.8)} — fraction of the transcript that "
+       "must align before it is placed at all",
+       f"single-exon attach threshold = {P('locus_se_overlap', 0.5)} — a junctionless transcript "
+       "joins a locus when at least this fraction of ITS OWN genomic length is covered by that "
+       "locus's exons on the same strand. Lower it and fragments get swept into neighbouring "
+       "genes; raise it and each becomes its own gene"],
       [M("genes before", fmt(locus["before"]) if locus else "—"),
        M("genes after", fmt(locus["after"]) if locus else "—")],
       "transcriptome/locus_rebuild_report.txt")
@@ -1208,9 +1636,14 @@ DATA = {
                             "gene model from the assembly has no row here. That is deliberate — it "
                             "makes an annotation count and a DE count comparable without a "
                             "footnote — but it also means this table is not a catalogue of what "
-                            "the species encodes: the assembly holds more gene models than this, "
-                            "and BUSCO completeness is still reported on it rather than here. Gene "
-                            "ids are the string-stripped map; the locus and Corset variants are "
+                            "the species encodes: the assembly holds more gene models than this. "
+                            "BUSCO is reported for this set, with the assembly's own completeness "
+                            "kept beside it on the Reference tab. Every row below except the gene "
+                            "count is a count of TRANSCRIPTS, so it is the same number under any "
+                            "gene map. The gene row is the exception: annotation runs before the "
+                            "locus rebuild and is keyed on the string-stripped map, so the "
+                            "module's own gene figure is the string-stripped one and the primary "
+                            "map's count is listed beside it. The locus and Corset variants are "
                             "re-keyed copies of this same table.")},
     "dge": dge,
     "dge_locus": dge_locus,
@@ -1222,6 +1655,10 @@ DATA = {
     "ma_figures": ma_figures,
     "gene_maps": gene_maps,
     "map_flow": map_flow,
+    "explorer": explorer,
+    "genemap_eval": genemap_eval,
+    "genemap_null": genemap_null,
+    "genemap_verdict": genemap_verdict,
     "venn": venn,
     "de_filtering_by_map": de_filtering_by_map,
     "related": [r for r in [
@@ -1390,6 +1827,10 @@ input[type=number]{width:82px;font-variant-numeric:tabular-nums}
 .caveat{border-left:3px solid var(--warning);padding:2px 0 2px 13px;color:var(--ink-2);font-size:13.5px;margin:10px 0}
 .warnbox{border-left:3px solid var(--critical)}
 .empty{color:var(--muted);font-size:13.5px;padding:10px 0}
+.linkish{color:var(--s1);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;
+  text-align:left;padding:0;text-decoration:underline;text-decoration-style:dotted}
+.linkish:hover{text-decoration-style:solid}
+.controls label.why{display:inline-flex;align-items:center;gap:5px}
 @media (max-width:640px){.hero .fig{font-size:40px}.wrap{padding:0 14px 48px}}
 @media print{nav.tabs,.ghost{display:none}section[hidden]{display:block!important}}
 """
@@ -2070,7 +2511,8 @@ function thresholdTable() {
   add('Long-read clustering (route B)', `vsearch --id ${p('cdhit_longread_id', 0.99)}`, 'transcript',
       'collapses near-identical long-read isoforms');
   add('Cross-source deduplication', `vsearch --id ${p('cdhit_dedup_id', 0.95)}`, 'transcript',
-      F.genes_before ? `${n(F.genes_before)} genes enter the expression filter` : 'produces all_sources_dedup');
+      F.genes_before ? `${n(F.genes_before)} genes (string-stripped: the locus map needs genome placement and is built for the analysed set only) enter the expression filter`
+                     : 'produces all_sources_dedup');
   add('Novel-vs-reference call', 'minimap2 -x asm20 -c --secondary=no', 'transcript',
       'exact match counts, not the approximate ones -x alone gives');
 
@@ -2083,8 +2525,8 @@ function thresholdTable() {
       F.kept ? `${n(F.kept)} kept, ${n(F.dropped)} dropped` : '—');
   add('→ what it feeds', 'the annotation, salmon pass 2, DESeq2, enrichment and the figures',
       'transcript', 'everything reported past this row describes the kept transcripts and nothing else');
-  add('→ what it does NOT touch', 'the assembly: its transcript count and its BUSCO completeness',
-      'transcript', 'every ladder rung keeps its own FASTA, stats and BUSCO summary');
+  add('→ what it does NOT touch', 'the assembly: it keeps its own FASTA, count and BUSCO',
+      'transcript', 'every rung is still scored separately — see the Reference tab');
 
   add('DESeq2 pre-filter', `>= ${p('de_min_count', 5)} counts in >= ${p('de_min_samples', 3)} samples`, 'gene',
       'a presence rule, not a total: a sum passes a gene carried by one sample');
@@ -2124,8 +2566,8 @@ function sectionMethods() {
           `filter (box ${FLOW_N.filt}) sits ABOVE the annotation (box ${FLOW_N.annot}), so one set of ` +
           'transcripts is annotated, quantified and tested and the Annotation tab describes the ' +
           'same transcripts as the DE tabs; what the assembly keeps that this set does not is a ' +
-          'larger transcript count and the BUSCO completeness measured on it, both reported on ' +
-          'the Reference tab and nowhere else. The run then ' +
+          'larger transcript count and its own completeness score, both kept on the Reference ' +
+          'tab beside the analysed set the headline quotes. The run then ' +
           'splits into three PARALLEL branches, one per gene map, each with its own DESeq2 and ' +
           'its own enrichment; they are three re-aggregations of ONE quantification, so their ' +
           'results are not independent evidence and agreement between them is not replication. ' +
@@ -2142,10 +2584,10 @@ function sectionMethods() {
     tableNode: thresholdTable(),
     note: 'Read top to bottom: each row narrows what the row below it sees. The row that decides ' +
           'the most is the expression filter: everything below it — the annotation, the reported ' +
-          'quantification, DESeq2, enrichment — sees only what it kept. The transcript count and ' +
-          'the BUSCO completeness quoted for this transcriptome are measured above it, on the ' +
-          'full deduplicated assembly, so those two numbers describe more transcripts than any ' +
-          'other number on this page.'
+          'quantification, DESeq2, enrichment — sees only what it kept, and the headline count ' +
+          'and BUSCO are measured on that kept set. The full deduplicated assembly is scored ' +
+          'above the filter and kept beside it on the Reference tab, where its larger transcript ' +
+          'count describes more transcripts than any other number on this page.'
   }));
   out.appendChild(h('p', { class: 'sub', text: 'Every stage as it actually ran: the arguments come from this run’s parameters, the numbers from its outputs. A skipped stage stays listed so the shape of the run is visible.' }));
   const groups = [];
@@ -2451,6 +2893,1065 @@ function sectionAnnotation() {
 }
 """
 
+SCRIPT4 = r"""
+/* ========================= Explorer: the matrices themselves =========================
+ * Every other tab reports a number the pipeline computed. This one ships the expression
+ * matrix and the DE statistics and lets the reader ask their own question of them: what
+ * does this gene do across the 15 libraries, which of its transcripts carries that, and
+ * does the call survive dropping the fold-change shrinkage.
+ *
+ * The arrays arrive gzip+base64 as quantised typed arrays and are inflated on first use,
+ * so a reader who never opens this tab pays nothing for it.
+ */
+const EXPL = DATA.explorer || null;
+const XC = {};                                   /* inflate-once cache, keyed by caller */
+
+function b64bytes(b64) {
+  const bin = atob(b64), u = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  return u;
+}
+async function gunzip(u8) {
+  const stream = new Blob([u8]).stream().pipeThrough(new DecompressionStream('gzip'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+/* A typed view over the inflated bytes. Response.arrayBuffer() hands back a buffer this
+ * array owns outright, so the view can start at 0 and span the whole thing. */
+async function xarr(key, b64, Ctor) {
+  if (XC[key]) return XC[key];
+  const raw = await gunzip(b64bytes(b64));
+  return (XC[key] = new Ctor(raw.buffer, 0, raw.byteLength / Ctor.BYTES_PER_ELEMENT));
+}
+async function xlines(key, b64) {
+  if (XC[key]) return XC[key];
+  const raw = await gunzip(b64bytes(b64));
+  return (XC[key] = new TextDecoder().decode(raw).split('\n'));
+}
+
+const NS = EXPL ? EXPL.samples.length : 0;
+const CONDS = EXPL ? (EXPL.conditions.length ? EXPL.conditions : ['all']) : [];
+/* which columns belong to each condition, in matrix column order */
+const COND_COLS = EXPL ? CONDS.map(c => EXPL.samples
+  .map((s, i) => [s, i]).filter(([s]) => (s.condition || 'all') === c).map(([, i]) => i)) : [];
+const COND_COLOR = [S1, S2, S3, S4];
+
+/* log2(x+1), the unit everything is stored and plotted in */
+const lg = (M, row, j) => M.counts[row * NS + j] / EXPL.scale;
+const unlg = v => Math.pow(2, v) - 1;
+/* Each DE array carries its own scale; DE_NA means DESeq2 returned no p-value for that gene. */
+const LFCS = EXPL ? EXPL.lfc_scale : 1, MLPS = EXPL ? EXPL.mlp_scale : 1;
+const deV = (arr, row, scale) => (!arr || arr[row] === EXPL.na) ? null : arr[row] / scale;
+const deL = (arr, row) => deV(arr, row, LFCS);          /* a log2 fold change */
+const deP = (arr, row) => deV(arr, row, MLPS);          /* -log10(adjusted p) */
+/* The fold-change cut is STRICT, because deseq2.R counts `log2FoldChange > lfc_cut`. Using >=
+ * here would make this page disagree with DE_summary.csv for any gene sitting exactly on it. */
+const overCut = (v, cut) => v !== null && Math.abs(v) > cut;
+
+async function loadLevel(level, mapKey) {
+  const key = level === 'tx' ? 'tx' : 'g:' + mapKey;
+  if (XC['LVL:' + key]) return XC['LVL:' + key];
+  const out = { level: level, key: key };
+  if (level === 'tx') {
+    const T = EXPL.tx;
+    out.n = T.n;
+    out.ids = await xlines(key + ':ids', T.ids);
+    out.counts = await xarr(key + ':c', T.tpm, Uint16Array);
+    out.desc = await xarr(key + ':d', T.desc, Int32Array);
+    out.flag = await xarr(key + ':f', T.flag, Uint8Array);
+    out.de = {};
+    out.unit = 'TPM';
+  } else {
+    const M = EXPL.maps[mapKey];
+    out.n = M.n;
+    out.ids = await xlines(key + ':ids', M.ids);
+    out.counts = await xarr(key + ':c', M.counts, Uint16Array);
+    out.desc = await xarr(key + ':d', M.desc, Int32Array);
+    out.flag = await xarr(key + ':f', M.flag, Uint8Array);
+    out.ntx = await xarr(key + ':n', M.ntx, Uint32Array);
+    out.txGene = M.tx_gene ? await xarr(key + ':tg', M.tx_gene, Int32Array) : null;
+    out.de = {};
+    for (const c in (M.de || {})) {
+      const d = M.de[c];
+      out.de[c] = {
+        lfc: await xarr(key + ':' + c + ':l', d.lfc, Int32Array),
+        raw: d.raw ? await xarr(key + ':' + c + ':r', d.raw, Int32Array) : null,
+        mlp: await xarr(key + ':' + c + ':p', d.mlp, Int32Array),
+        base: await xarr(key + ':' + c + ':b', d.base, Int32Array),
+        tested: d.tested
+      };
+    }
+    out.unit = 'normalised count';
+  }
+  return (XC['LVL:' + key] = out);
+}
+async function descTable() { return xlines('DESCS', EXPL.desc_table); }
+
+/* ---------- getting a plot out of the page ---------- */
+/* The charts paint with CSS custom properties, which mean nothing in a standalone file, so
+ * every var() is resolved against the live document before the SVG leaves the page. */
+function inlineVars(node) {
+  const cs = getComputedStyle(document.documentElement);
+  const resolve = v => String(v).replace(/var\((--[\w-]+)\)/g,
+    (_, n) => (cs.getPropertyValue(n) || '').trim() || '#888');
+  node.querySelectorAll('*').forEach(el => {
+    ['style', 'fill', 'stroke'].forEach(a => {
+      const v = el.getAttribute(a);
+      if (v && v.indexOf('var(') >= 0) el.setAttribute(a, resolve(v));
+    });
+  });
+  node.querySelectorAll('text').forEach(el => {
+    const c = getComputedStyle(el);
+    if (!el.getAttribute('fill')) el.setAttribute('fill', c.fill);
+    el.setAttribute('font-size', c.fontSize);
+    el.setAttribute('font-family', 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif');
+  });
+  return node;
+}
+function svgSource(svg) {
+  const c = svg.cloneNode(true);
+  c.setAttribute('xmlns', SVGNS);
+  const vb = (c.getAttribute('viewBox') || '0 0 760 400').split(/\s+/);
+  c.setAttribute('width', vb[2]); c.setAttribute('height', vb[3]);
+  inlineVars(c);
+  const bg = s('rect', { x: 0, y: 0, width: vb[2], height: vb[3],
+    fill: (getComputedStyle(document.body).backgroundColor || '#fff') });
+  c.insertBefore(bg, c.firstChild);
+  return '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(c);
+}
+function saveBlob(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+function downloadSVG(svg, name) { saveBlob(new Blob([svgSource(svg)], { type: 'image/svg+xml' }), name + '.svg'); }
+function downloadPNG(svg, name, scale) {
+  const src = svgSource(svg), vb = (svg.getAttribute('viewBox') || '0 0 760 400').split(/\s+/);
+  const k = scale || 3, img = new Image();
+  img.onload = () => {
+    const cv = document.createElement('canvas');
+    cv.width = vb[2] * k; cv.height = vb[3] * k;
+    const g = cv.getContext('2d');
+    g.scale(k, k); g.drawImage(img, 0, 0);
+    cv.toBlob(b => b && saveBlob(b, name + '.png'), 'image/png');
+  };
+  img.onerror = () => downloadSVG(svg, name);
+  img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(src)));
+}
+function exportRow(svgHolder, name, tsv) {
+  return h('div', { class: 'controls', style: 'margin:10px 0 0' }, [
+    h('button', { class: 'ghost', text: 'Download PNG',
+      onclick: () => { const g = svgHolder.querySelector('svg'); if (g) downloadPNG(g, name, 3); } }),
+    h('button', { class: 'ghost', text: 'Download SVG',
+      onclick: () => { const g = svgHolder.querySelector('svg'); if (g) downloadSVG(g, name); } }),
+    tsv ? h('button', { class: 'ghost', text: 'Download data (TSV)',
+      onclick: () => saveBlob(new Blob([tsv()], { type: 'text/tab-separated-values' }), name + '.tsv') }) : null,
+    tsv ? h('button', {
+      class: 'ghost', text: 'Copy data',
+      onclick: e => {
+        const t = tsv(), btn = e.target;
+        const done = () => { btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = 'Copy data'; }, 1400); };
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(done, () => { });
+        else { const ta = h('textarea', { }); ta.value = t; document.body.appendChild(ta); ta.select();
+               try { document.execCommand('copy'); done(); } catch (err) { } ta.remove(); }
+      }
+    }) : null
+  ]);
+}
+
+/* A CSS custom property as literal rgb, and a blend of two: the heatmap has to carry its own
+ * colours out of the page, where neither var() nor color-mix() means anything. */
+function cssRGB(name) {
+  const raw = (getComputedStyle(document.documentElement).getPropertyValue(name) || '').trim();
+  let m = raw.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+  if (m) {
+    const x = m[1].length === 3 ? m[1].split('').map(c => c + c).join('') : m[1];
+    return [parseInt(x.slice(0, 2), 16), parseInt(x.slice(2, 4), 16), parseInt(x.slice(4, 6), 16)];
+  }
+  m = raw.match(/rgba?\(([^)]+)\)/);
+  if (m) { const p = m[1].split(/[,\s/]+/).map(Number); return [p[0] | 0, p[1] | 0, p[2] | 0]; }
+  return [136, 136, 136];
+}
+function mixRGB(a, b, t) {
+  const k = Math.max(0, Math.min(1, t));
+  return 'rgb(' + [0, 1, 2].map(i => Math.round(a[i] + (b[i] - a[i]) * k)).join(',') + ')';
+}
+
+/* ---------- the charts the selection can be drawn as ---------- */
+function statsOf(M, row, linear) {
+  return COND_COLS.map(cols => {
+    const v = cols.map(j => linear ? unlg(lg(M, row, j)) : lg(M, row, j));
+    const m = v.reduce((a, b) => a + b, 0) / (v.length || 1);
+    const sd = v.length > 1
+      ? Math.sqrt(v.reduce((a, b) => a + (b - m) * (b - m), 0) / (v.length - 1)) : 0;
+    return { mean: m, sd: sd, v: v };
+  });
+}
+
+/* feature x condition, mean with a standard-deviation whisker */
+function chartConditionMeans(M, rows, ids, linear) {
+  const H = 60 + rows.length * (18 * CONDS.length + 16), padL = 190, padR = 20, padT = 10;
+  const pw = W - padL - padR;
+  const st = rows.map(r => statsOf(M, r, linear));
+  const max = Math.max(1e-9, ...st.flat().map(x => x.mean + x.sd));
+  const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'condition means' });
+  const sx = v => padL + pw * v / max;
+  ticks(max, 4).forEach(v => {
+    svg.appendChild(s('line', { x1: sx(v), x2: sx(v), y1: padT, y2: H - 30, style: 'stroke:var(--grid)' }));
+    svg.appendChild(s('text', { x: sx(v), y: H - 14, 'text-anchor': 'middle', class: 'tick' }, fmt(v)));
+  });
+  let y = padT + 6;
+  rows.forEach((r, ri) => {
+    svg.appendChild(s('text', { x: padL - 10, y: y + 11, 'text-anchor': 'end', class: 'axlab' },
+      fit(ids[r], padL - 16)));
+    CONDS.forEach((c, ci) => {
+      const d = st[ri][ci], bh = 13;
+      const bar = s('path', { d: barPath(padL, y, Math.max(0, sx(d.mean) - padL), bh, 3),
+        style: `fill:${COND_COLOR[ci % 4]}` });
+      svg.appendChild(bar);
+      hoverable(bar, ids[r], [
+        { label: c + ' mean', value: fmt(d.mean), color: COND_COLOR[ci % 4] },
+        { label: 'SD', value: fmt(d.sd) },
+        { label: 'libraries', value: d.v.map(x => fmt(x)).join(', ') }]);
+      if (d.sd > 0) {
+        svg.appendChild(s('line', { x1: sx(Math.max(0, d.mean - d.sd)), x2: sx(d.mean + d.sd),
+          y1: y + bh / 2, y2: y + bh / 2, style: 'stroke:var(--ink-2);stroke-width:1.2' }));
+        [Math.max(0, d.mean - d.sd), d.mean + d.sd].forEach(v =>
+          svg.appendChild(s('line', { x1: sx(v), x2: sx(v), y1: y + 2, y2: y + bh - 2,
+            style: 'stroke:var(--ink-2);stroke-width:1.2' })));
+      }
+      y += 18;
+    });
+    y += 16;
+  });
+  return svg;
+}
+
+/* every library as its own dot, so n and spread are visible rather than summarised */
+function chartStrip(M, rows, ids, linear) {
+  const rowH = 46, H = 40 + rows.length * rowH, padL = 190, padR = 20, padT = 14;
+  const pw = W - padL - padR;
+  const all = [];
+  rows.forEach(r => COND_COLS.forEach(cols => cols.forEach(j =>
+    all.push(linear ? unlg(lg(M, r, j)) : lg(M, r, j)))));
+  const max = Math.max(1e-9, ...all);
+  const sx = v => padL + pw * v / max;
+  const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'per-library values' });
+  ticks(max, 4).forEach(v => {
+    svg.appendChild(s('line', { x1: sx(v), x2: sx(v), y1: padT, y2: H - 26, style: 'stroke:var(--grid)' }));
+    svg.appendChild(s('text', { x: sx(v), y: H - 10, 'text-anchor': 'middle', class: 'tick' }, fmt(v)));
+  });
+  rows.forEach((r, ri) => {
+    const y0 = padT + ri * rowH;
+    svg.appendChild(s('text', { x: padL - 10, y: y0 + 18, 'text-anchor': 'end', class: 'axlab' },
+      fit(ids[r], padL - 16)));
+    CONDS.forEach((c, ci) => {
+      const yy = y0 + 8 + ci * 11;
+      const vals = COND_COLS[ci].map(j => ({ v: linear ? unlg(lg(M, r, j)) : lg(M, r, j), j: j }));
+      const m = vals.reduce((a, b) => a + b.v, 0) / (vals.length || 1);
+      svg.appendChild(s('line', { x1: sx(m), x2: sx(m), y1: yy - 4, y2: yy + 4,
+        style: `stroke:${COND_COLOR[ci % 4]};stroke-width:2` }));
+      vals.forEach(o => {
+        const c2 = s('circle', { cx: sx(o.v), cy: yy, r: 3,
+          style: `fill:${COND_COLOR[ci % 4]};opacity:.72` });
+        svg.appendChild(c2);
+        hoverable(c2, ids[r], [{ label: EXPL.samples[o.j].name, value: fmt(o.v), color: COND_COLOR[ci % 4] },
+                               { label: c + ' mean', value: fmt(m) }]);
+      });
+    });
+  });
+  return svg;
+}
+
+/* one bar per library, grouped and coloured by condition: the raw shape of the data */
+function chartSamples(M, rows, ids, linear) {
+  const panelH = 120, H = rows.length * (panelH + 26) + 26, padL = 60, padR = 14;
+  const pw = W - padL - padR, bw = pw / NS;
+  const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'per-library bars' });
+  const condOf = j => Math.max(0, CONDS.indexOf(EXPL.samples[j].condition || 'all'));
+  rows.forEach((r, ri) => {
+    const top = ri * (panelH + 26) + 18;
+    const vals = [];
+    for (let j = 0; j < NS; j++) vals.push(linear ? unlg(lg(M, r, j)) : lg(M, r, j));
+    const max = Math.max(1e-9, ...vals);
+    svg.appendChild(s('text', { x: padL, y: top - 5, class: 'axlab' }, fit(ids[r], pw)));
+    ticks(max, 3).forEach(v => {
+      const y = top + panelH - panelH * v / max;
+      svg.appendChild(s('line', { x1: padL, x2: W - padR, y1: y, y2: y, style: 'stroke:var(--grid)' }));
+      svg.appendChild(s('text', { x: padL - 6, y: y + 4, 'text-anchor': 'end', class: 'tick' }, fmt(v)));
+    });
+    vals.forEach((v, j) => {
+      const hh = panelH * v / max, ci = condOf(j);
+      const bar = s('rect', { x: padL + j * bw + 1.5, y: top + panelH - hh,
+        width: Math.max(1, bw - 3), height: Math.max(0, hh), rx: 2,
+        style: `fill:${COND_COLOR[ci % 4]}` });
+      svg.appendChild(bar);
+      hoverable(bar, EXPL.samples[j].name, [
+        { label: ids[r], value: fmt(v), color: COND_COLOR[ci % 4] },
+        { label: 'condition', value: EXPL.samples[j].condition || '—' }]);
+    });
+    if (ri === rows.length - 1) {
+      for (let j = 0; j < NS; j++) {
+        const t = s('text', { x: padL + j * bw + bw / 2, y: top + panelH + 14, 'text-anchor': 'end',
+          class: 'tick', transform: `rotate(-38 ${padL + j * bw + bw / 2} ${top + panelH + 14})` },
+          fit(EXPL.samples[j].name, 74));
+        svg.appendChild(t);
+      }
+    }
+  });
+  return svg;
+}
+
+/* features x libraries. Row z-scores by default: a heatmap of absolute values just restates
+ * which genes are abundant, which the table already says. */
+function chartHeatmap(M, rows, ids, linear, zscore) {
+  const cellH = Math.max(7, Math.min(16, Math.floor(620 / Math.max(1, rows.length))));
+  const padL = 190, padR = 58, padT = 56;
+  const H = padT + rows.length * cellH + 16, pw = W - padL - padR, cw = pw / NS;
+  const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'expression heatmap' });
+  const mat = rows.map(r => {
+    const v = []; for (let j = 0; j < NS; j++) v.push(linear ? unlg(lg(M, r, j)) : lg(M, r, j));
+    if (!zscore) return v;
+    const m = v.reduce((a, b) => a + b, 0) / NS;
+    const sd = Math.sqrt(v.reduce((a, b) => a + (b - m) * (b - m), 0) / Math.max(1, NS - 1));
+    return v.map(x => sd > 0 ? (x - m) / sd : 0);
+  });
+  const flat = mat.flat();
+  const lim = zscore ? Math.max(0.5, ...flat.map(Math.abs)) : Math.max(1e-9, ...flat);
+  /* Resolved to literal rgb() rather than left as color-mix(var(...)): an exported SVG is read
+   * outside this document, where neither the custom properties nor color-mix would resolve. */
+  const UPC = cssRGB('--up'), DNC = cssRGB('--down'), RMP = cssRGB('--ramp-1'), BGC = cssRGB('--plane');
+  const colr = v => {
+    if (zscore) {
+      const t = Math.max(-1, Math.min(1, v / lim));
+      return mixRGB(BGC, t >= 0 ? UPC : DNC, Math.abs(t));
+    }
+    return mixRGB(BGC, RMP, Math.max(0, Math.min(1, v / lim)));
+  };
+  for (let j = 0; j < NS; j++) {
+    const x = padL + j * cw + cw / 2;
+    svg.appendChild(s('text', { x: x, y: padT - 8, class: 'tick', 'text-anchor': 'start',
+      transform: `rotate(-54 ${x} ${padT - 8})` }, fit(EXPL.samples[j].name, 70)));
+    const ci = Math.max(0, CONDS.indexOf(EXPL.samples[j].condition || 'all'));
+    svg.appendChild(s('rect', { x: padL + j * cw, y: padT - 5, width: cw - 1, height: 3,
+      style: `fill:${COND_COLOR[ci % 4]}` }));
+  }
+  mat.forEach((v, ri) => {
+    const y = padT + ri * cellH;
+    if (cellH >= 9) svg.appendChild(s('text', { x: padL - 8, y: y + cellH - 2, 'text-anchor': 'end',
+      class: 'tick' }, fit(ids[rows[ri]], padL - 14)));
+    v.forEach((x, j) => {
+      const cell = s('rect', { x: padL + j * cw, y: y, width: Math.max(1, cw - 1),
+        height: Math.max(1, cellH - 1), style: `fill:${colr(x)}` });
+      svg.appendChild(cell);
+      hoverable(cell, ids[rows[ri]], [
+        { label: EXPL.samples[j].name, value: zscore ? x.toFixed(2) + ' z' : fmt(x) },
+        { label: 'condition', value: EXPL.samples[j].condition || '—' }]);
+    });
+  });
+  /* the scale, so a colour can be read as a number */
+  const gw = 12, gx = W - padR + 12, gy = padT, gh = Math.min(170, rows.length * cellH);
+  for (let k = 0; k < 24; k++) {
+    const t = 1 - k / 23, v = zscore ? (t * 2 - 1) * lim : t * lim;
+    svg.appendChild(s('rect', { x: gx, y: gy + k * (gh / 24), width: gw, height: gh / 24 + 0.6,
+      style: `fill:${colr(v)}` }));
+  }
+  svg.appendChild(s('text', { x: gx + gw + 4, y: gy + 8, class: 'tick' },
+    zscore ? '+' + lim.toFixed(1) : fmt(lim)));
+  svg.appendChild(s('text', { x: gx + gw + 4, y: gy + gh, class: 'tick' },
+    zscore ? '-' + lim.toFixed(1) : '0'));
+  return svg;
+}
+
+/* every feature as a line across the libraries: co-regulation, or the lack of it */
+function chartProfile(M, rows, ids, linear) {
+  const H = 330, padL = 58, padR = 16, padT = 12, padB = 62;
+  const pw = W - padL - padR, ph = H - padT - padB;
+  const series = rows.map(r => {
+    const v = []; for (let j = 0; j < NS; j++) v.push(linear ? unlg(lg(M, r, j)) : lg(M, r, j));
+    return v;
+  });
+  const max = Math.max(1e-9, ...series.flat());
+  const sx = j => padL + (NS > 1 ? pw * j / (NS - 1) : pw / 2);
+  const sy = v => padT + ph - ph * v / max;
+  const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'expression profiles' });
+  ticks(max, 4).forEach(v => {
+    svg.appendChild(s('line', { x1: padL, x2: W - padR, y1: sy(v), y2: sy(v), style: 'stroke:var(--grid)' }));
+    svg.appendChild(s('text', { x: padL - 6, y: sy(v) + 4, 'text-anchor': 'end', class: 'tick' }, fmt(v)));
+  });
+  /* condition bands, so a step at a group boundary is visible */
+  CONDS.forEach((c, ci) => {
+    const cols = COND_COLS[ci]; if (!cols.length) return;
+    const x0 = sx(Math.min(...cols)), x1 = sx(Math.max(...cols));
+    svg.appendChild(s('rect', { x: x0 - 3, y: padT + ph + 6, width: Math.max(4, x1 - x0 + 6), height: 4,
+      style: `fill:${COND_COLOR[ci % 4]}` }));
+    svg.appendChild(s('text', { x: (x0 + x1) / 2, y: padT + ph + 22, 'text-anchor': 'middle',
+      class: 'tick' }, c));
+  });
+  for (let j = 0; j < NS; j++)
+    svg.appendChild(s('text', { x: sx(j), y: H - 8, 'text-anchor': 'end', class: 'tick',
+      transform: `rotate(-38 ${sx(j)} ${H - 8})` }, fit(EXPL.samples[j].name, 70)));
+  series.forEach((v, ri) => {
+    const col = COND_COLOR[ri % 4];
+    const d = v.map((x, j) => `${j ? 'L' : 'M'}${sx(j).toFixed(1)} ${sy(x).toFixed(1)}`).join('');
+    const line = s('path', { d: d, style: `fill:none;stroke:${col};stroke-width:1.8;opacity:.85` });
+    svg.appendChild(line);
+    hoverable(line, ids[rows[ri]], v.map((x, j) =>
+      ({ label: EXPL.samples[j].name, value: fmt(x) })).slice(0, 15));
+    v.forEach((x, j) => svg.appendChild(s('circle', { cx: sx(j), cy: sy(x), r: 2.2,
+      style: `fill:${col}` })));
+  });
+  return svg;
+}
+
+/* ---------- shrinkage: the same contrast with and without apeglm ---------- */
+/* Both axes are fold changes of the same genes, so the frame is square and symmetric and the
+ * identity line is drawn: shrinkage shows up as points pulled towards y = 0. */
+function chartShrinkScatter(M, contrast, padjT, lfcT, pts) {
+  const H = 380, pad = 54, padT = 12, padR = 14;
+  const pw = W - pad - padR, ph = H - padT - 40;
+  const lim = Math.max(1, ...pts.map(p => Math.max(Math.abs(p.raw), Math.abs(p.lfc)))) * 1.04;
+  const sx = v => pad + pw * (v + lim) / (2 * lim);
+  const sy = v => padT + ph - ph * (v + lim) / (2 * lim);
+  const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img',
+    'aria-label': 'shrunken against unshrunken log2 fold change' });
+  const tk = ticks(lim, 3); const axv = tk.concat(tk.filter(v => v > 0).map(v => -v));
+  axv.forEach(v => {
+    svg.appendChild(s('line', { x1: sx(v), x2: sx(v), y1: padT, y2: padT + ph, style: 'stroke:var(--grid)' }));
+    svg.appendChild(s('line', { x1: pad, x2: W - padR, y1: sy(v), y2: sy(v), style: 'stroke:var(--grid)' }));
+    svg.appendChild(s('text', { x: sx(v), y: H - 22, 'text-anchor': 'middle', class: 'tick' }, fmt(v)));
+    svg.appendChild(s('text', { x: pad - 7, y: sy(v) + 4, 'text-anchor': 'end', class: 'tick' }, fmt(v)));
+  });
+  svg.appendChild(s('line', { x1: sx(-lim), y1: sy(-lim), x2: sx(lim), y2: sy(lim),
+    style: 'stroke:var(--axis);stroke-width:1;stroke-dasharray:4 3' }));
+  svg.appendChild(s('line', { x1: pad, x2: W - padR, y1: sy(0), y2: sy(0), style: 'stroke:var(--axis)' }));
+  svg.appendChild(s('text', { x: pad + pw / 2, y: H - 5, 'text-anchor': 'middle', class: 'axlab' },
+    'unshrunken log2 fold change (DESeq2 MLE)'));
+  svg.appendChild(s('text', { x: 12, y: padT + ph / 2, class: 'axlab',
+    transform: `rotate(-90 12 ${padT + ph / 2})`, 'text-anchor': 'middle' },
+    'shrunken log2 fold change (reported)'));
+  pts.forEach(p => {
+    const sigS = p.padj < padjT && overCut(p.lfc, lfcT);
+    const sigR = p.padj < padjT && overCut(p.raw, lfcT);
+    const col = (sigS && sigR) ? S3 : sigR ? S2 : sigS ? S1 : MUTED;
+    const c = s('circle', { cx: sx(p.raw), cy: sy(p.lfc), r: (sigS || sigR) ? 2.8 : 1.8,
+      style: `fill:${col};opacity:${(sigS || sigR) ? .9 : .32}` });
+    svg.appendChild(c);
+    if (sigS || sigR) hoverable(c, p.id, [
+      { label: 'shrunken log2FC', value: p.lfc.toFixed(2), color: S1 },
+      { label: 'unshrunken log2FC', value: p.raw.toFixed(2), color: S2 },
+      { label: 'padj', value: p.padj.toExponential(2) },
+      { label: 'called by', value: (sigS && sigR) ? 'both' : sigR ? 'unshrunken only' : 'shrunken only' }]);
+  });
+  return svg;
+}
+
+function chartVolcano(pts, padjT, lfcT, useRaw, label) {
+  const H = 360, pad = 54, padT = 12, padR = 14;
+  const pw = W - pad - padR, ph = H - padT - 42;
+  const xv = p => useRaw ? p.raw : p.lfc;
+  const lim = Math.max(1, ...pts.map(p => Math.abs(xv(p)))) * 1.04;
+  const ymax = Math.max(2, ...pts.map(p => p.mlp)) * 1.04;
+  const sx = v => pad + pw * (v + lim) / (2 * lim);
+  const sy = v => padT + ph - ph * v / ymax;
+  const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'volcano plot' });
+  ticks(ymax, 4).forEach(v => {
+    svg.appendChild(s('line', { x1: pad, x2: W - padR, y1: sy(v), y2: sy(v), style: 'stroke:var(--grid)' }));
+    svg.appendChild(s('text', { x: pad - 7, y: sy(v) + 4, 'text-anchor': 'end', class: 'tick' }, fmt(v)));
+  });
+  const tk = ticks(lim, 3); tk.concat(tk.filter(v => v > 0).map(v => -v)).forEach(v => {
+    svg.appendChild(s('line', { x1: sx(v), x2: sx(v), y1: padT, y2: padT + ph, style: 'stroke:var(--grid)' }));
+    svg.appendChild(s('text', { x: sx(v), y: H - 24, 'text-anchor': 'middle', class: 'tick' }, fmt(v)));
+  });
+  [-lfcT, lfcT].forEach(v => svg.appendChild(s('line', { x1: sx(v), x2: sx(v), y1: padT, y2: padT + ph,
+    style: 'stroke:var(--axis);stroke-dasharray:4 3' })));
+  const yT = -Math.log10(padjT);
+  if (yT <= ymax) svg.appendChild(s('line', { x1: pad, x2: W - padR, y1: sy(yT), y2: sy(yT),
+    style: 'stroke:var(--axis);stroke-dasharray:4 3' }));
+  svg.appendChild(s('text', { x: pad + pw / 2, y: H - 6, 'text-anchor': 'middle', class: 'axlab' }, label));
+  svg.appendChild(s('text', { x: 12, y: padT + ph / 2, class: 'axlab',
+    transform: `rotate(-90 12 ${padT + ph / 2})`, 'text-anchor': 'middle' }, '-log10 adjusted p'));
+  pts.forEach(p => {
+    const x = xv(p), sig = p.padj < padjT && overCut(x, lfcT);
+    const col = sig ? (x > 0 ? UP : DOWN) : MUTED;
+    const c = s('circle', { cx: sx(x), cy: sy(p.mlp), r: sig ? 2.8 : 1.7,
+      style: `fill:${col};opacity:${sig ? .88 : .3}` });
+    svg.appendChild(c);
+    if (sig) hoverable(c, p.id, [
+      { label: 'log2FC ' + (useRaw ? '(unshrunken)' : '(shrunken)'), value: x.toFixed(2), color: col },
+      { label: 'the other estimate', value: (useRaw ? p.lfc : p.raw).toFixed(2) },
+      { label: 'padj', value: p.padj.toExponential(2) }]);
+  });
+  return svg;
+}
+
+/* ================================ the Explorer tab ================================ */
+function sectionExplorer() {
+  const out = h('div');
+  if (!EXPL) {
+    out.appendChild(h('p', { class: 'empty', text:
+      'No expression matrices were staged for this run, so there is nothing to explore here.' }));
+    return out;
+  }
+  if (typeof DecompressionStream === 'undefined') {
+    out.appendChild(h('p', { class: 'caveat', text:
+      'This browser has no DecompressionStream, which the page uses to unpack the expression ' +
+      'matrices. Every other tab works; open this one in a current Firefox, Chrome or Safari.' }));
+    return out;
+  }
+  out.appendChild(h('p', { class: 'sub', text:
+    'The matrices themselves, not a summary of them. Pick a level and a gene map, filter down to ' +
+    'the features you want, then plot or export exactly that selection. Gene-level values are ' +
+    'DESeq2 median-of-ratios normalised counts; transcript-level values are salmon TPM, the ' +
+    'quantity the expression filter was applied to. Fold changes are shown as reported ' +
+    '(apeglm-shrunken) and as DESeq2 estimated them before shrinkage.' }));
+
+  const X = {
+    level: 'gene', map: (EXPL.maps[EXPL.primary] ? EXPL.primary : Object.keys(EXPL.maps)[0]),
+    q: '', flagOnly: false, contrast: '', sigOnly: true, lfcMode: 'lfc',
+    padj: EXPL.alpha, lfc: EXPL.lfc_cut, dir: 'all', sort: 'expr', limit: 100, linear: false,
+    chart: 'cond', zscore: true, sel: new Set(), focus: null, M: null, descs: null
+  };
+  const descOf = r => {
+    const ix = X.M.desc[r];
+    return (ix >= 0 && X.descs && X.descs[ix]) ? X.descs[ix] : '';
+  };
+  const rowMean = r => {
+    let t = 0; for (let j = 0; j < NS; j++) t += lg(X.M, r, j);
+    return t / NS;
+  };
+  const contrastsOf = () => Object.keys((X.M && X.M.de) || {});
+
+  /* ---- the three cards, filled in by draw() once the arrays are in ---- */
+  const browseBox = h('div'), plotBox = h('div'), shrinkBox = h('div'), isoBox = h('div');
+  const status = h('p', { class: 'empty', text: 'Unpacking the expression matrices…' });
+  out.appendChild(status);
+  out.appendChild(browseBox); out.appendChild(plotBox);
+  out.appendChild(shrinkBox); out.appendChild(isoBox);
+
+  /* ---------------- filtering ---------------- */
+  function rowsNow() {
+    const M = X.M, de = X.contrast ? M.de[X.contrast] : null;
+    const lfcArr = de ? ((X.lfcMode === 'raw' && de.raw) ? de.raw : de.lfc) : null;
+    const q = X.q.toLowerCase();
+    const keep = [];
+    for (let r = 0; r < M.n; r++) {
+      if (X.flagOnly && !M.flag[r]) continue;
+      if (q && M.ids[r].toLowerCase().indexOf(q) < 0 && descOf(r).toLowerCase().indexOf(q) < 0) continue;
+      if (de) {
+        const mlp = deP(de.mlp, r);
+        if (mlp === null) continue;                /* not tested in this contrast */
+        const L = deL(lfcArr, r);
+        if (L === null) continue;
+        if (X.dir === 'up' && !(L > 0)) continue;
+        if (X.dir === 'down' && !(L < 0)) continue;
+        if (X.sigOnly && !(Math.pow(10, -mlp) < X.padj && overCut(L, X.lfc))) continue;
+      }
+      keep.push(r);
+    }
+    const de2 = de, la = lfcArr;
+    if (X.sort === 'id') keep.sort((a, b) => M.ids[a] < M.ids[b] ? -1 : M.ids[a] > M.ids[b] ? 1 : 0);
+    else if (X.sort === 'padj' && de2) keep.sort((a, b) => (deP(de2.mlp, b) || 0) - (deP(de2.mlp, a) || 0));
+    else if (X.sort === 'lfc' && de2) keep.sort((a, b) => Math.abs(deL(la, b) || 0) - Math.abs(deL(la, a) || 0));
+    else { const mm = new Map(); keep.forEach(r => mm.set(r, rowMean(r))); keep.sort((a, b) => mm.get(b) - mm.get(a)); }
+    return keep;
+  }
+
+  /* ---------------- card A: browse ---------------- */
+  const tableHolder = h('div', { class: 'scroll' });
+  const counter = h('span', { class: 'why' });
+  const selCount = h('span', { class: 'why' });
+
+  function numIn(val, step, min, max, onset, title) {
+    return h('input', { type: 'number', value: String(val), step: String(step), min: String(min),
+      max: max === null ? null : String(max), title: title || null,
+      oninput: e => { const v = parseFloat(e.target.value); if (!Number.isNaN(v)) { onset(v); draw(); } } });
+  }
+  function sel(options, val, onset, aria) {
+    const n = h('select', { 'aria-label': aria, onchange: e => { onset(e.target.value); draw(); } },
+      options.map(([v, t]) => h('option', { value: v, text: t })));
+    n.value = val;
+    return n;
+  }
+
+  function controlsA() {
+    const levelOpts = [['gene', 'Genes']];
+    if (EXPL.tx) levelOpts.push(['tx', 'Transcripts']);
+    const row1 = h('div', { class: 'controls' }, [
+      h('label', { class: 'why', text: 'Level' }),
+      sel(levelOpts, X.level, v => { if (v !== X.level) { X.level = v; X.sel.clear(); X.focus = null; X.M = null; } }, 'Level'),
+      X.level === 'gene' && Object.keys(EXPL.maps).length > 1
+        ? h('label', { class: 'why', text: 'Gene map' }) : null,
+      X.level === 'gene' && Object.keys(EXPL.maps).length > 1
+        ? sel(Object.keys(EXPL.maps).map(k => [k, EXPL.maps[k].label + (k === EXPL.primary ? ' (primary)' : '')]),
+              X.map, v => { X.map = v; X.sel.clear(); X.focus = null; X.M = null; }, 'Gene map') : null,
+      h('input', { type: 'search', placeholder: 'search id or annotation', value: X.q,
+        oninput: e => { X.q = e.target.value; draw(); } }),
+      (() => {
+        const w = h('label', { class: 'why' });
+        const cb = h('input', { type: 'checkbox', onchange: e => { X.flagOnly = e.target.checked; draw(); } });
+        cb.checked = X.flagOnly;
+        w.appendChild(cb); w.appendChild(document.createTextNode(' ' + (EXPL.interest_label || 'flagged') + ' only'));
+        return w;
+      })()
+    ]);
+    const cs = contrastsOf();
+    const row2 = cs.length ? h('div', { class: 'controls' }, [
+      h('label', { class: 'why', text: 'Contrast' }),
+      sel([['', '— none (expression only)']].concat(cs.map(c => [c, c])), X.contrast,
+          v => { X.contrast = v; if (X.sort !== 'expr' && !v) X.sort = 'expr'; }, 'Contrast'),
+      X.contrast ? h('label', { class: 'why', text: 'Fold change' }) : null,
+      X.contrast ? sel([['lfc', 'shrunken (reported)'], ['raw', 'unshrunken (MLE)']], X.lfcMode,
+                       v => { X.lfcMode = v; }, 'Fold-change estimate') : null,
+      X.contrast ? h('label', { class: 'why', text: 'padj <' }) : null,
+      X.contrast ? numIn(X.padj, 0.01, 0.0001, 1, v => { X.padj = v; }) : null,
+      X.contrast ? h('label', { class: 'why', text: '|log2FC| >' }) : null,
+      X.contrast ? numIn(X.lfc, 0.5, 0, null, v => { X.lfc = v; }) : null,
+      X.contrast ? sel([['all', 'up and down'], ['up', 'up only'], ['down', 'down only']], X.dir,
+                       v => { X.dir = v; }, 'Direction') : null,
+      X.contrast ? (() => {
+        const w = h('label', { class: 'why' });
+        const cb = h('input', { type: 'checkbox', onchange: e => { X.sigOnly = e.target.checked; draw(); } });
+        cb.checked = X.sigOnly;
+        w.appendChild(cb); w.appendChild(document.createTextNode(' significant only'));
+        return w;
+      })() : null
+    ]) : null;
+    const sortOpts = [['expr', 'mean expression'], ['id', 'id']];
+    if (X.contrast) { sortOpts.push(['padj', 'adjusted p']); sortOpts.push(['lfc', '|log2FC|']); }
+    const row3 = h('div', { class: 'controls' }, [
+      h('label', { class: 'why', text: 'Sort by' }),
+      sel(sortOpts, X.sort, v => { X.sort = v; }, 'Sort'),
+      h('label', { class: 'why', text: 'Show' }),
+      sel([['50', '50 rows'], ['100', '100 rows'], ['250', '250 rows'], ['500', '500 rows']],
+          String(X.limit), v => { X.limit = parseInt(v, 10); }, 'Rows shown'),
+      counter, h('span', { class: 'spacer' }), selCount
+    ]);
+    return [row1, row2, row3].filter(Boolean);
+  }
+
+  function drawTable(rows) {
+    const shown = rows.slice(0, X.limit);
+    counter.textContent = `${fmt(rows.length)} of ${fmt(X.M.n)} ${X.level === 'tx' ? 'transcripts' : 'genes'}`
+      + (rows.length > X.limit ? ` · showing the first ${X.limit}` : '');
+    selCount.textContent = `${X.sel.size} selected`;
+    const de = X.contrast ? X.M.de[X.contrast] : null;
+    const lfcArr = de ? ((X.lfcMode === 'raw' && de.raw) ? de.raw : de.lfc) : null;
+    const t = h('table');
+    const hr = h('tr');
+    ['', X.level === 'tx' ? 'Transcript' : 'Gene', 'Annotation'].forEach(l => hr.appendChild(h('th', { text: l })));
+    if (X.level === 'gene') hr.appendChild(h('th', { class: 'num', text: 'tx' }));
+    CONDS.forEach(c => hr.appendChild(h('th', { class: 'num', text: c })));
+    if (de) ['log2FC', 'other est.', 'padj'].forEach(l => hr.appendChild(h('th', { class: 'num', text: l })));
+    t.appendChild(h('thead', {}, [hr]));
+    const tb = h('tbody');
+    shown.forEach(r => {
+      const tr = h('tr');
+      const cb = h('input', { type: 'checkbox', 'aria-label': 'select ' + X.M.ids[r],
+        onchange: e => {
+          if (e.target.checked) X.sel.add(r); else X.sel.delete(r);
+          selCount.textContent = `${X.sel.size} selected`;
+          drawPlot(); drawIso();
+        } });
+      cb.checked = X.sel.has(r);
+      tr.appendChild(h('td', {}, [cb]));
+      const idCell = h('td', {}, [h('button', { class: 'linkish', text: X.M.ids[r],
+        title: 'focus this feature', onclick: () => { X.focus = r; drawIso(); } })]);
+      tr.appendChild(idCell);
+      tr.appendChild(h('td', { text: descOf(r) || '—' }));
+      if (X.level === 'gene') tr.appendChild(h('td', { class: 'num', text: X.M.ntx ? fmt(X.M.ntx[r]) : '—' }));
+      COND_COLS.forEach(cols => {
+        const m = cols.reduce((a, j) => a + lg(X.M, r, j), 0) / (cols.length || 1);
+        tr.appendChild(h('td', { class: 'num', text: X.linear ? fmt(unlg(m)) : m.toFixed(2) }));
+      });
+      if (de) {
+        const L = deL(lfcArr, r), O = deL((X.lfcMode === 'raw' && de.raw) ? de.lfc : de.raw, r);
+        const mlp = deP(de.mlp, r);
+        tr.appendChild(h('td', { class: 'num', text: L === null ? '—' : L.toFixed(2) }));
+        tr.appendChild(h('td', { class: 'num', text: O === null ? '—' : O.toFixed(2) }));
+        tr.appendChild(h('td', { class: 'num',
+          text: mlp === null ? '—' : Math.pow(10, -mlp).toExponential(1) }));
+      }
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    tableHolder.textContent = '';
+    tableHolder.appendChild(t);
+    return shown;
+  }
+
+  /* ---------------- card B: plot whatever is selected ---------------- */
+  const CHARTS = [
+    ['cond', 'Condition means ± SD', 12],
+    ['strip', 'Every library as a dot', 12],
+    ['samples', 'Bars per library', 9],
+    ['profile', 'Profiles across libraries', 25],
+    ['heat', 'Heatmap', 200]
+  ];
+  const plotHolder = h('div');
+
+  function selectionTSV() {
+    const rows = [...X.sel];
+    const head = [X.level === 'tx' ? 'transcript' : 'gene', 'annotation']
+      .concat(EXPL.samples.map(s => s.name));
+    const lines = [head.join('\t')];
+    rows.forEach(r => {
+      const v = [];
+      for (let j = 0; j < NS; j++) { const q = lg(X.M, r, j); v.push((X.linear ? unlg(q) : q).toFixed(4)); }
+      lines.push([X.M.ids[r], descOf(r).replace(/\t/g, ' ')].concat(v).join('\t'));
+    });
+    lines.push('');
+    lines.push('# values: ' + (X.linear ? X.M.unit : 'log2(' + X.M.unit + ' + 1)'));
+    lines.push('# conditions: ' + EXPL.samples.map(s => s.name + '=' + (s.condition || '?')).join(' '));
+    lines.push('# stored to ~0.04% of value; for exact numbers use the run\'s '
+      + (X.level === 'tx' ? 'quantification/<sample>/quant.sf' : 'normalized_counts.csv'));
+    return lines.join('\n');
+  }
+
+  function drawPlot() {
+    const spec = CHARTS.find(c => c[0] === X.chart) || CHARTS[0];
+    const cap = spec[2];
+    const rows = [...X.sel].slice(0, cap);
+    const over = X.sel.size - rows.length;
+    plotHolder.textContent = '';
+    if (!X.sel.size) {
+      plotHolder.appendChild(h('p', { class: 'empty', text:
+        'Nothing selected yet. Tick rows in the table above — or filter down to what you want ' +
+        'and use "select all shown" — and the plot is drawn from exactly that set.' }));
+      return;
+    }
+    const chartBox = h('div');
+    let svg;
+    if (X.chart === 'cond') svg = chartConditionMeans(X.M, rows, X.M.ids, X.linear);
+    else if (X.chart === 'strip') svg = chartStrip(X.M, rows, X.M.ids, X.linear);
+    else if (X.chart === 'samples') svg = chartSamples(X.M, rows, X.M.ids, X.linear);
+    else if (X.chart === 'profile') svg = chartProfile(X.M, rows, X.M.ids, X.linear);
+    else svg = chartHeatmap(X.M, rows, X.M.ids, X.linear, X.zscore);
+    chartBox.appendChild(svg);
+    plotHolder.appendChild(chartBox);
+    plotHolder.appendChild(legendRow(CONDS.map((c, i) => ({ label: c, color: COND_COLOR[i % 4] }))));
+    if (over > 0) plotHolder.appendChild(h('p', { class: 'caveat', text:
+      `${fmt(X.sel.size)} features are selected and this chart draws the first ${cap}; ` +
+      `${fmt(over)} are not shown. The heatmap takes up to 200, and the TSV export takes all of them.` }));
+    plotHolder.appendChild(exportRow(chartBox,
+      `${X.level === 'tx' ? 'transcripts' : 'genes'}_${X.chart}`, selectionTSV));
+  }
+
+  /* ---------------- card C: with and without shrinkage ---------------- */
+  const shrinkHolder = h('div');
+  let shrinkView = 'scatter';
+
+  function shrinkPoints(contrast) {
+    const de = X.M.de[contrast];
+    if (!de || !de.raw) return null;
+    const sig = [], bg = [];
+    for (let r = 0; r < X.M.n; r++) {
+      const mlp = deP(de.mlp, r); if (mlp === null) continue;
+      const L = deL(de.lfc, r), R = deL(de.raw, r);
+      if (L === null || R === null) continue;
+      const padj = Math.pow(10, -mlp);
+      const o = { id: X.M.ids[r], lfc: L, raw: R, padj: padj, mlp: mlp };
+      /* Everything that either estimate calls significant is kept in full, so the live counts
+       * are exact; only the indifferent cloud is thinned, and it is never counted. */
+      ((padj < X.padj && (overCut(L, X.lfc) || overCut(R, X.lfc))) ? sig : bg).push(o);
+    }
+    const step = Math.max(1, Math.floor(bg.length / 3500));
+    return { all: sig.concat(bg.filter((_, i) => i % step === 0)), sig: sig, nbg: bg.length,
+             shown_bg: bg.filter((_, i) => i % step === 0).length };
+  }
+
+  function drawShrink() {
+    shrinkHolder.textContent = '';
+    const cs = contrastsOf();
+    if (!cs.length) return;
+    const c = X.contrast || cs[0];
+    const de = X.M.de[c];
+    if (!de) return;
+    if (!de.raw) {
+      shrinkHolder.appendChild(h('p', { class: 'empty', text:
+        'This run’s DE tables carry no unshrunken fold change, so there is nothing to compare.' }));
+      return;
+    }
+    /* exact counts over every tested gene, not over the thinned scatter */
+    let nS = 0, nR = 0, both = 0, onlyS = 0, onlyR = 0, tested = 0;
+    for (let r = 0; r < X.M.n; r++) {
+      const mlp = deP(de.mlp, r); if (mlp === null) continue;
+      tested++;
+      const padj = Math.pow(10, -mlp), L = deL(de.lfc, r), R = deL(de.raw, r);
+      if (L === null || R === null) continue;
+      const a = padj < X.padj && overCut(L, X.lfc), b = padj < X.padj && overCut(R, X.lfc);
+      if (a) nS++; if (b) nR++;
+      if (a && b) both++; else if (a) onlyS++; else if (b) onlyR++;
+    }
+    const pts = shrinkPoints(c);
+    shrinkHolder.appendChild(h('div', { class: 'controls' }, [
+      h('label', { class: 'why', text: 'Contrast' }),
+      sel(cs.map(x => [x, x]), c, v => { X.contrast = v; }, 'Contrast'),
+      h('label', { class: 'why', text: 'padj <' }),
+      numIn(X.padj, 0.01, 0.0001, 1, v => { X.padj = v; }),
+      h('label', { class: 'why', text: '|log2FC| >' }),
+      numIn(X.lfc, 0.5, 0, null, v => { X.lfc = v; }),
+      h('span', { class: 'spacer' }),
+      sel([['scatter', 'one against the other'], ['vshrunk', 'volcano, shrunken'],
+           ['vraw', 'volcano, unshrunken']], shrinkView, v => { shrinkView = v; }, 'View')
+    ]));
+    shrinkHolder.appendChild(buildTable({
+      cols: [{ key: 'k', label: 'At padj < ' + X.padj + ' and |log2FC| > ' + X.lfc },
+             { key: 'v', label: 'Genes', num: true }, { key: 'n', label: 'Reads as' }],
+      rows: [
+        { k: 'Tested in this contrast', v: fmt(tested), n: 'genes DESeq2 returned a p-value for' },
+        { k: 'Significant, shrunken log2FC (reported)', v: fmt(nS), n: 'what every other tab counts' },
+        { k: 'Significant, unshrunken log2FC', v: fmt(nR), n: 'the MLE, before apeglm' },
+        { k: 'Called by both', v: fmt(both), n: 'robust to the choice' },
+        { k: 'Only with shrinkage', v: fmt(onlyS), n: 'shrinkage moved it past the cut — rare' },
+        { k: 'Only without shrinkage', v: fmt(onlyR), n: 'a large but badly-estimated fold change' }
+      ]
+    }));
+    const box = h('div');
+    if (shrinkView === 'scatter') {
+      box.appendChild(chartShrinkScatter(X.M, c, X.padj, X.lfc, pts.all));
+      box.appendChild(legendRow([
+        { label: 'called by both', color: S3 }, { label: 'unshrunken only', color: S2 },
+        { label: 'shrunken only', color: S1 }, { label: 'neither', color: MUTED }]));
+    } else {
+      const useRaw = shrinkView === 'vraw';
+      box.appendChild(chartVolcano(pts.all, X.padj, X.lfc, useRaw,
+        (useRaw ? 'unshrunken' : 'shrunken') + ' log2 fold change — ' + c));
+      box.appendChild(legendRow([{ label: 'up', color: UP }, { label: 'down', color: DOWN },
+                                 { label: 'not significant', color: MUTED }]));
+    }
+    shrinkHolder.appendChild(box);
+    shrinkHolder.appendChild(exportRow(box, 'shrinkage_' + c, null));
+    shrinkHolder.appendChild(h('p', { class: 'note-line', text:
+      `Every gene either estimate calls significant is plotted; of the ${fmt(pts.nbg)} indifferent ` +
+      `genes, ${fmt(pts.shown_bg)} are drawn as context. The counts in the table are exact over all ` +
+      `${fmt(tested)} tested genes.` }));
+    shrinkHolder.appendChild(h('p', { class: 'note-line', text:
+      'Why the shrunken estimate is the one reported: a log2 fold change of 6 from four reads ' +
+      'against one is not evidence of a six-fold change, and apeglm pulls exactly those towards ' +
+      'zero while leaving well-measured genes alone. The adjusted p-value is the same in both ' +
+      'columns — shrinkage changes the effect size, not the test — so a gene that appears ' +
+      'only in the unshrunken count is one whose significance never depended on the |log2FC| cut ' +
+      'being met by a reliable estimate.' }));
+  }
+
+  /* ---------------- card D: the transcripts behind one gene ---------------- */
+  const isoHolder = h('div');
+  let TXL = null, txWanted = false;
+
+  function drawIso() {
+    isoHolder.textContent = '';
+    if (X.level !== 'gene') {
+      isoHolder.appendChild(h('p', { class: 'empty', text:
+        'Showing transcripts already — switch the level to Genes to group them.' }));
+      return;
+    }
+    if (!EXPL.tx || !X.M.txGene) {
+      isoHolder.appendChild(h('p', { class: 'empty', text:
+        'No transcript-level quantification was staged for this run.' }));
+      return;
+    }
+    const focus = X.focus !== null ? X.focus : (X.sel.size ? [...X.sel][0] : null);
+    if (focus === null) {
+      isoHolder.appendChild(h('p', { class: 'empty', text:
+        'Click a gene id in the table above and its transcripts are broken out here.' }));
+      return;
+    }
+    if (!TXL) {
+      isoHolder.appendChild(h('p', { class: 'empty', text: 'Unpacking the transcript matrix…' }));
+      if (!txWanted) {
+        txWanted = true;
+        loadLevel('tx', null).then(t => { TXL = t; drawIso(); },
+          e => { isoHolder.textContent = ''; isoHolder.appendChild(
+            h('p', { class: 'empty', text: 'Transcript matrix could not be read: ' + e.message })); });
+      }
+      return;
+    }
+    const tg = X.M.txGene, rows = [];
+    for (let j = 0; j < tg.length; j++) if (tg[j] === focus) rows.push(j);
+    const gid = X.M.ids[focus];
+    isoHolder.appendChild(h('div', { class: 'controls' }, [
+      h('span', { class: 'why', text: `${gid} — ${fmt(rows.length)} transcript` +
+        (rows.length === 1 ? '' : 's') + ' · ' + (descOf(focus) || 'no annotation') }),
+      h('span', { class: 'spacer' }),
+      h('button', { class: 'ghost', text: 'Clear', onclick: () => { X.focus = null; drawIso(); } })
+    ]));
+    if (!rows.length) {
+      isoHolder.appendChild(h('p', { class: 'empty', text:
+        'No transcript of this gene is in the quantification — which should not happen; ' +
+        'the gene was built from transcripts.' }));
+      return;
+    }
+    const box = h('div');
+    box.appendChild(rows.length === 1
+      ? chartSamples(TXL, rows, TXL.ids, X.linear)
+      : chartConditionMeans(TXL, rows.slice(0, 12), TXL.ids, X.linear));
+    isoHolder.appendChild(box);
+    isoHolder.appendChild(legendRow(CONDS.map((c, i) => ({ label: c, color: COND_COLOR[i % 4] }))));
+    isoHolder.appendChild(buildTable({
+      cols: [{ key: 't', label: 'Transcript' }, { key: 'a', label: 'Annotation' }]
+        .concat(CONDS.map(c => ({ key: 'c_' + c, label: c + ' (TPM)', num: true })))
+        .concat([{ key: 'sh', label: '% of gene TPM', num: true }]),
+      rows: (() => {
+        const tot = CONDS.map((_, ci) => rows.reduce((a, r) =>
+          a + COND_COLS[ci].reduce((b, j) => b + unlg(lg(TXL, r, j)), 0) / (COND_COLS[ci].length || 1), 0));
+        const totAll = tot.reduce((a, b) => a + b, 0) || 1;
+        return rows.slice(0, 40).map(r => {
+          const o = { t: TXL.ids[r] };
+          const ix = TXL.desc[r];
+          o.a = (ix >= 0 && X.descs && X.descs[ix]) ? X.descs[ix] : '—';
+          let mine = 0;
+          CONDS.forEach((c, ci) => {
+            const m = COND_COLS[ci].reduce((b, j) => b + unlg(lg(TXL, r, j)), 0) / (COND_COLS[ci].length || 1);
+            o['c_' + c] = fmt(m); mine += m;
+          });
+          o.sh = (100 * mine / totAll).toFixed(1) + '%';
+          return o;
+        });
+      })()
+    }));
+    isoHolder.appendChild(exportRow(box, 'isoforms_' + gid, () => {
+      const head = ['transcript', 'annotation'].concat(EXPL.samples.map(s => s.name));
+      const lines = [head.join('\t')];
+      rows.forEach(r => {
+        const v = []; for (let j = 0; j < NS; j++) v.push(unlg(lg(TXL, r, j)).toFixed(4));
+        const ix = TXL.desc[r];
+        lines.push([TXL.ids[r], (ix >= 0 && X.descs ? X.descs[ix] : '')].concat(v).join('\t'));
+      });
+      return lines.join('\n');
+    }));
+    isoHolder.appendChild(h('p', { class: 'note-line', text:
+      'TPM, so the shares are comparable within a library. A gene whose differential expression ' +
+      'comes from one transcript while the others hold still is a candidate for isoform switching ' +
+      'rather than for a change in gene output.' }));
+  }
+
+  /* ---------------- assembly ---------------- */
+  function draw() {
+    const rows = rowsNow();
+    drawTable(rows);
+    browseBox.textContent = '';
+    const cA = h('div', { class: 'card' });
+    cA.appendChild(h('div', { class: 'figcap' }, [
+      h('h3', { text: 'Browse the expression matrix' }),
+      h('span', { class: 'why', text: X.level === 'tx' ? 'salmon TPM per transcript'
+                                                       : 'normalised counts per gene, ' + EXPL.maps[X.map].label }),
+      h('span', { class: 'spacer' }),
+      (() => {
+        const w = h('label', { class: 'why' });
+        const cb = h('input', { type: 'checkbox',
+          onchange: e => { X.linear = e.target.checked; draw(); } });
+        cb.checked = X.linear;
+        w.appendChild(cb);
+        w.appendChild(document.createTextNode(' linear scale (otherwise log2)'));
+        return w;
+      })()
+    ]));
+    controlsA().forEach(n => cA.appendChild(n));
+    cA.appendChild(h('div', { class: 'controls' }, [
+      h('button', { class: 'ghost', text: `Select all shown (${Math.min(rows.length, X.limit)})`,
+        onclick: () => { rows.slice(0, X.limit).forEach(r => X.sel.add(r)); draw(); } }),
+      h('button', { class: 'ghost', text: 'Select the top 50 of this filter',
+        onclick: () => { rows.slice(0, 50).forEach(r => X.sel.add(r)); draw(); } }),
+      h('button', { class: 'ghost', text: 'Clear selection',
+        onclick: () => { X.sel.clear(); draw(); } })
+    ]));
+    cA.appendChild(tableHolder);
+    cA.appendChild(h('p', { class: 'note-line', text:
+      'Condition columns are the mean over that condition’s libraries. "other est." is the same ' +
+      'gene’s fold change under the estimate not currently chosen, so the two can be read ' +
+      'against each other without switching. Rows are ranked by the sort, and the number shown is ' +
+      'capped for the browser’s sake — the filter always reports the full count.' }));
+    cA.appendChild(h('p', { class: 'note-line', text:
+      'Precision: expression is stored to about 0.04% of its value, which is far below the ' +
+      'measurement but means the last digit or two here can differ from normalized_counts.csv / ' +
+      'quant.sf — use those files when an exact count matters. Fold changes and adjusted ' +
+      'p-values are stored finely enough to reproduce DE_summary.csv exactly, so the significance ' +
+      'counts on this tab are not approximations.' }));
+    browseBox.appendChild(cA);
+
+    plotBox.textContent = '';
+    const cB = h('div', { class: 'card' });
+    cB.appendChild(h('div', { class: 'figcap' }, [
+      h('h3', { text: 'Plot the selection' }),
+      h('span', { class: 'why', text: 'drawn from exactly the rows ticked above' })
+    ]));
+    cB.appendChild(h('div', { class: 'controls' }, [
+      h('label', { class: 'why', text: 'Chart' }),
+      sel(CHARTS.map(c => [c[0], c[1]]), X.chart, v => { X.chart = v; }, 'Chart type'),
+      X.chart === 'heat' ? (() => {
+        const w = h('label', { class: 'why' });
+        const cb = h('input', { type: 'checkbox', onchange: e => { X.zscore = e.target.checked; draw(); } });
+        cb.checked = X.zscore;
+        w.appendChild(cb); w.appendChild(document.createTextNode(' row z-score'));
+        return w;
+      })() : null
+    ]));
+    cB.appendChild(plotHolder);
+    plotBox.appendChild(cB);
+    drawPlot();
+
+    shrinkBox.textContent = '';
+    if (contrastsOf().length) {
+      const cC = h('div', { class: 'card' });
+      cC.appendChild(h('div', { class: 'figcap' }, [
+        h('h3', { text: 'Fold changes with and without shrinkage' }),
+        h('span', { class: 'why', text: 'apeglm-shrunken against the raw DESeq2 estimate' })
+      ]));
+      cC.appendChild(shrinkHolder);
+      shrinkBox.appendChild(cC);
+      drawShrink();
+    }
+
+    isoBox.textContent = '';
+    const cD = h('div', { class: 'card' });
+    cD.appendChild(h('div', { class: 'figcap' }, [
+      h('h3', { text: 'The transcripts behind one gene' }),
+      h('span', { class: 'why', text: 'which isoform carries the gene-level signal' })
+    ]));
+    cD.appendChild(isoHolder);
+    isoBox.appendChild(cD);
+    drawIso();
+  }
+
+  /* arrays first, then the whole tab; a failure says so rather than rendering half a page */
+  (async () => {
+    try {
+      X.descs = await descTable();
+      X.M = await loadLevel(X.level, X.map);
+      const cs = contrastsOf();
+      if (!X.contrast && cs.length) X.contrast = cs[0];
+      status.remove();
+      draw();
+    } catch (e) {
+      status.className = 'caveat';
+      status.textContent = 'The expression matrices could not be unpacked: ' + e.message;
+    }
+  })();
+
+  /* the level / map switches drop X.M, so every redraw after one has to reload first */
+  const origDraw = draw;
+  draw = function () {
+    if (!X.M) {
+      status.className = 'empty';
+      status.textContent = 'Unpacking…';
+      browseBox.before(status);
+      loadLevel(X.level, X.map).then(m => {
+        X.M = m;
+        const cs = contrastsOf();
+        if (X.contrast && !cs.includes(X.contrast)) X.contrast = cs.length ? cs[0] : '';
+        if (!X.contrast && cs.length) X.contrast = cs[0];
+        status.remove();
+        origDraw();
+      });
+      return;
+    }
+    origDraw();
+  };
+  return out;
+}
+"""
+
 SCRIPT3 = r"""
 
 /* An embedded diagnostic figure. The PNG is a data URI, so this still works offline. */
@@ -2621,6 +4122,21 @@ function sectionExpression() {
 
     const FILT = (DATA.de_filtering_by_map || {})[activeMapKey()] || [];
     if (FILT.length) {
+      /* The reader arrives here from a headline gene count and finds a smaller "tested" number,
+         so the card has to account for the whole gap, not just the part DESeq2 is responsible
+         for. Three steps, and the first happens BEFORE DESeq2 is called: a presence pre-filter on
+         raw counts, which is why genes-in-model is already below the map's gene count. */
+      /* the ACTIVE map's gene count, not the primary one: this card follows the map switcher,
+         and a primary-map figure here would print a negative pre-filter on the other two */
+      const mapGenes = ((DATA.gene_maps || []).find(m => m.key === activeMapKey()) || {}).genes;
+      const inModel = FILT[0] && FILT[0].in_model;
+      const preDrop = (mapGenes && inModel) ? mapGenes - inModel : null;
+      const chain = preDrop === null ? '' :
+        `Chain from the headline gene count: ${fmt(mapGenes)} genes in the ${activeMapLabel()} map ` +
+        `→ ${fmt(preDrop)} removed by the presence pre-filter, which is applied before DESeq2 is ` +
+        `called (a gene needs the minimum count in the minimum number of libraries) → ` +
+        `${fmt(inModel)} genes in the model, the figure all contrasts share → the per-contrast ` +
+        `Tested column. Only the last step is DESeq2's own. `;
       out.appendChild(card({
         title: 'What the filters removed — ' + activeMapLabel(),
         why: 'per contrast, before the test was read',
@@ -2633,7 +4149,7 @@ function sectionExpression() {
             tested: fmt(r.tested), threshold: r.threshold, filtered: fmt(r.filtered),
             cooks: fmt(r.cooks), shrinkage: r.shrinkage }))
         },
-        note: "Independent filtering trims low-count genes at a per-contrast baseMean threshold. Cook's outliers leave the test entirely — with 5 replicates DESeq2 cannot replace them, so they carry padj = NA."
+        note: chain + "Independent filtering trims low-count genes at a per-contrast baseMean threshold, so it varies between contrasts. Cook's outliers leave the test entirely — with 5 replicates DESeq2 cannot replace them, so they carry pvalue = NA — and because the cutoff is a property of the design rather than of a contrast, the same genes are dropped from every contrast."
       }));
     }
 
@@ -2656,6 +4172,82 @@ function sectionExpression() {
                  note: m.note }))
         },
         note: 'Every map runs through the same quantifications and the same DESeq2 code, so a difference in DE genes is a difference in gene identity and nothing else. The headline numbers come from the map named by dge_primary_map; the others are published beside them as sensitivity analyses. Each map also ships <code>&lt;set&gt;.genes.fasta</code> and <code>.genes.pep</code> in transcriptome/ — one representative per gene (its longest transcript, and the longest ORF on any of its transcripts), so a gene set can be BLASTed or scored in protein mode; the aa count is how many genes have an ORF at all.'
+      }));
+    }
+
+    /* Why one map is primary. The card above compares the maps on what the run itself can see
+       (gene counts, DE counts) -- which cannot settle the choice, because a map that calls more DE
+       genes is not thereby better. This one shows the two things that can settle it: agreement
+       with INDEPENDENT truth, and how many DE calls each map invents when the condition labels are
+       shuffled. Rendered only when an external evaluation is staged. */
+    if ((DATA.genemap_eval || []).length) {
+      const EV = DATA.genemap_eval, NUL = DATA.genemap_null || {};
+      const truths = [...new Set(EV.map(r => r.truth))];
+      const maps   = [...new Set(EV.map(r => r.map))];
+      const get = (m, t) => EV.find(r => r.map === m && r.truth === t) || null;
+      const pm = (DATA.meta || {}).primary_map || '';
+      // the primary map's own row, so every claim below is anchored to a number in this table
+      const best = t => {
+        const vals = maps.map(m => (get(m, t) || {}).f1).filter(v => v !== null && v !== undefined);
+        return vals.length ? Math.max(...vals) : null;
+      };
+      const nulls = maps.map(m => (NUL[m] || {}).false_calls).filter(v => v !== null && v !== undefined);
+      const bestNull = nulls.length ? Math.min(...nulls) : null;
+      const isPrimary = m => m === pm || m.toLowerCase() === pm.toLowerCase();
+
+      const cols = [{ key: 'map', label: 'Map' }];
+      truths.forEach(t => cols.push({ key: 'f1_' + t, label: 'Matches ' + t + ' truth (F1)', num: true }));
+      cols.push({ key: 'split', label: 'Split (under-merged) %', num: true },
+                { key: 'fused', label: 'Fused (over-merged) %', num: true });
+      if (nulls.length) cols.push({ key: 'nullcalls', label: 'False DE calls / shuffle', num: true });
+
+      const rows = maps.map(m => {
+        const r = { map: m + (isPrimary(m) ? '  (primary)' : '') };
+        truths.forEach(t => {
+          const e = get(m, t);
+          const v = e && e.f1 !== null && e.f1 !== undefined ? e.f1 : null;
+          r['f1_' + t] = v === null ? '\u2014'
+                       : v.toFixed(3) + (best(t) !== null && Math.abs(v - best(t)) < 1e-9 ? '  \u2190 best' : '');
+        });
+        const any = get(m, truths[0]);
+        r.split = any && any.split !== null && any.split !== undefined ? any.split.toFixed(1) + '%' : '\u2014';
+        r.fused = any && any.fused !== null && any.fused !== undefined ? any.fused.toFixed(1) + '%' : '\u2014';
+        if (nulls.length) {
+          const n = (NUL[m] || {}).false_calls;
+          r.nullcalls = (n === null || n === undefined) ? '\u2014'
+                      : n.toFixed(1) + (bestNull !== null && Math.abs(n - bestNull) < 1e-9 ? '  \u2190 fewest' : '');
+        }
+        return r;
+      });
+
+      const chartTruth = truths[0];
+      out.appendChild(card({
+        title: 'Why ' + (pm || 'the primary map') + ' is the primary map',
+        why: 'decided on independent truth and a label-permutation null \u2014 not on which map calls more genes',
+        chart: barH({
+          rows: maps.map((m, idx) => {
+            const e = get(m, chartTruth);
+            return { label: m + (isPrimary(m) ? ' \u2605' : ''),
+                     value: e && e.f1 ? e.f1 : 0,
+                     color: isPrimary(m) ? S1 : MUTED,
+                     tip: truths.map(t => {
+                       const x = get(m, t);
+                       return { label: 'F1 vs ' + t, value: x && x.f1 ? x.f1.toFixed(3) : '\u2014' };
+                     }).concat((NUL[m] ? [{ label: 'false calls / shuffle', value: NUL[m].false_calls.toFixed(1) }] : [])) };
+          }), gutter: 190, measure: 'F1 vs ' + chartTruth + ' truth'
+        }),
+        table: { cols: cols, rows: rows },
+        note: (DATA.genemap_verdict || '') +
+          ' How to read it. F1 is agreement with a grouping the pipeline never saw, so it is the ' +
+          'only column here that speaks to whether a map\u2019s genes ARE genes; 1.000 would be ' +
+          'perfect agreement. Split% and Fused% are the two ways a map can be wrong and they pull ' +
+          'against each other \u2014 splitting one gene across several ids (under-merging) versus ' +
+          'fusing distinct genes into one id (over-merging) \u2014 so no map can minimise both and ' +
+          'the right map is the one with the better total error, not a zero in either column. ' +
+          'False DE calls per shuffle comes from re-running the whole DE test on permuted condition ' +
+          'labels: with the labels destroyed every call is false, so a map that reports more of them ' +
+          'is manufacturing signal. A map built using the condition labels will score badly here ' +
+          'however good its F1, because its gene definition has already seen what DESeq2 then tests.'
       }));
     }
 
@@ -3050,6 +4642,7 @@ const TABS = [
   ['annotation', 'Annotation', sectionAnnotation],
   ['expression', 'Expression', sectionExpression],
   ['genes', 'Genes', sectionGenes],
+  ['explorer', 'Explorer', sectionExplorer],
   ['provenance', 'Provenance', sectionProvenance],
 ];
 const built = {};
@@ -3141,7 +4734,7 @@ page = (PAGE
         .replace("__RUNMETA__", " · ".join(meta_bits))
         .replace("__STYLE__", STYLE)
         .replace("__DATA__", data_json)
-        .replace("__SCRIPT__", SCRIPT + SCRIPT2 + SCRIPT3))
+        .replace("__SCRIPT__", SCRIPT + SCRIPT2 + SCRIPT4 + SCRIPT3))
 
 os.makedirs(os.path.dirname(os.path.abspath(args.out)) or ".", exist_ok=True)
 with open(args.out, "w") as fh:

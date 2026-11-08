@@ -213,6 +213,7 @@ process from the run's own outputs plus `pipeline_info/run_manifest.json`, so it
 | **Annotation** | evidence per transcript, and the annotation summary |
 | **Expression** | DE counts, sample PCA, an interactive volcano and the enrichment terms — the contrast selector scopes everything below it |
 | **Genes** | the two gene-count bounds with their validation metrics, a searchable, sortable table of the top DE genes joined to their annotation, and **interactive volcano plots** whose padj and \|log2FC\| thresholds you set — one plot per contrast as small multiples, or one large plot when a single contrast is selected |
+| **Explorer** | the expression matrix itself. Browse every gene or transcript, filter by annotation / contrast / significance / direction, then **plot exactly the rows you select** — condition means with SD, every library as a dot, per-library bars, profiles, or a z-scored heatmap — and export the chart as PNG or SVG and the values as TSV. Break a gene into its transcripts to see which isoform carries the signal, and compare **fold changes with and without shrinkage** gene by gene, with live counts of what each estimate calls significant |
 | **Provenance** | the run's metadata, every parameter it used, links to the other reports, and the files this page was built from |
 
 Every Overview panel is derived, never listed: a short-read-only run shows one input panel, a run
@@ -226,6 +227,17 @@ with `padj` below the embedding ceiling (`--sig-ceiling`, default 0.25) is plott
 live up/down counts are **exact** at any threshold up to it — verified against DESeq2's own
 summary (558/317, 488/213, 171/143 at padj < 0.05, |log2FC| ≥ 1, and 1,001/657 at the ceiling).
 Only the clearly non-significant cloud is sampled down, and it is context that is never counted.
+
+The Explorer tab carries the matrices rather than a summary, which is why the page is around
+12 MB rather than 5: gene-level normalised counts for every gene map, transcript-level salmon TPM,
+and per-contrast fold changes both shrunken and unshrunken. They are quantised (uint16
+`log2(x+1) * 1000` for expression; int32 at 1e-4 for fold changes and 1e-5 for `-log10(padj)`),
+gzipped, base64'd and inflated in the browser the first time the tab is opened — so a reader who
+never opens it pays nothing, and the page is still one file that works from `file://`. Expression
+is stored to ~0.04% of value and the tab says so, pointing at `normalized_counts.csv` and
+`quant.sf` for exact numbers; the DE statistics are stored finely enough that the tab's live
+significance counts **reproduce `DE_summary.csv` exactly**, verified across all three gene maps
+and all three contrasts. The \|log2FC\| cut is strict (`> cut`), matching `deseq2.R`.
 
 Every chart has a **table view** (the `Table` button on each card), a hover/focus tooltip, and a
 legend — nothing is encoded by colour alone. The palette is validated for colour-vision

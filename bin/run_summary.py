@@ -6,7 +6,9 @@ can be re-derived from a single place.
 """
 import argparse
 import csv
+import glob
 import os
+import re
 import sys
 
 ap = argparse.ArgumentParser()
@@ -72,6 +74,37 @@ if t:
     L.append("  source: longread_decontam.tsv")
 
 t = read_tsv("route_contribution.tsv")
+
+# The expression-filtered set is a ladder rung too, and the one every reported number below
+# describes. route_contribution.tsv is written before the filter runs, so it cannot carry it --
+# SEQ_STATS_EXPR and BUSCO_EXPR publish for it instead. Appending it here puts the analysed set and
+# the assembly it was cut from on one line each, with completeness for both, so the plain-text
+# summary says the same thing the dashboard does.
+if t and len(t) > 1:
+    for _st in sorted(glob.glob(os.path.join(args.dir, "*_expressed.stats.tsv"))):
+        _name = os.path.basename(_st)[:-len(".stats.tsv")]
+        if any(r and r[0] == _name for r in t[1:]):
+            continue
+        _rows = read_tsv(os.path.basename(_st))
+        if not _rows or len(_rows) < 2:
+            continue
+        _c = dict(zip(_rows[0], _rows[1]))
+        _busco = "-"
+        _bp = os.path.join(args.dir, f"{_name}.busco.txt")
+        if os.path.exists(_bp):
+            _m = re.search(r"C:[\d.]+%\[S:[\d.]+%,D:[\d.]+%\],F:[\d.]+%,M:[\d.]+%",
+                           open(_bp).read())
+            if _m:
+                _busco = _m.group(0)
+        _genes = "-"
+        _fp = os.path.join(args.dir, f"{_name}.filter.txt")
+        if os.path.exists(_fp):
+            _g = re.search(r"genes\s+[\d,]+\s*->\s*([\d,]+)", open(_fp).read())
+            if _g:
+                _genes = _g.group(1).replace(",", "")
+        t.append([_name, "expression-filtered (THE ANALYSED SET: annotated, quantified, tested)",
+                  _c.get("num_seqs", "-"), _c.get("sum_len", "-"), "-", _genes, _busco])
+
 if t and len(t) > 1:
     section("Reference ladder")
     widths = [max(len(r[i]) for r in t) for i in range(len(t[0]))]
@@ -80,13 +113,40 @@ if t and len(t) > 1:
     L.append("  source: route_contribution.tsv")
     L.append("  NOTE: gene counts from string-stripped transcript ids are an UPPER BOUND on")
     L.append("        distinct loci — see locus_rebuild_report.txt for the coordinate-based map.")
+    L.append("  NOTE: the last row is the analysed set — everything reported below it (annotation,")
+    L.append("        quantification, DE, enrichment) describes that set, not the full assembly.")
+    L.append("        Both carry their own BUSCO: the assembly's says how complete the")
+    L.append("        reconstruction is, the analysed set's how much of the conserved gene space")
+    L.append("        this experiment actually expressed.")
 
 import glob as _glob
 hits = sorted(_glob.glob(os.path.join(args.dir, "*summary*.txt")))
 hits = [h for h in hits if "annotation" in os.path.basename(h)]
 if hits:
     section("Annotation")
-    L += ["  " + l for l in open(hits[0]).read().strip().split("\n")]
+    # The annotation module is handed the string-stripped tx2gene, because the locus rebuild needs
+    # the genome placement and runs after it. Every other line of its summary counts TRANSCRIPTS
+    # and so is the same under any map; this one line is not, and unlabelled it reads as the
+    # headline gene count. Label it and put the locus figure beside it.
+    _locus_after = None
+    _lr = os.path.join(args.dir, "locus_rebuild_report.txt")
+    if os.path.exists(_lr):
+        _m = re.search(r"gene count AFTER\s*\(genomic loci\)\s*:\s*([\d,]+)", open(_lr).read())
+        if _m:
+            # the module's own rows are unformatted, so match them rather than the report's commas
+            _locus_after = _m.group(1).replace(",", "")
+    for line in open(hits[0]).read().strip().split("\n"):
+        _g = re.match(r"^(genes)(\s+)([\d,]+)\s*$", line)
+        if _g and _locus_after:
+            width = len(_g.group(1)) + len(_g.group(2))
+            L.append("  " + "genes (string-stripped)".ljust(width) + _g.group(3))
+            L.append("  " + "genes (locus rebuild)".ljust(width) + _locus_after)
+        else:
+            L.append("  " + line)
+    if _locus_after:
+        L.append("  NOTE: every other row counts TRANSCRIPTS and is therefore the same under any")
+        L.append("        gene map. Only the gene row moves, and the headline map for this run")
+        L.append(f"        ({args.primary_map}) is the second of the two.")
     L.append(f"  source: {os.path.basename(hits[0])}")
 
 t = read_tsv("mapping_rates.tsv")

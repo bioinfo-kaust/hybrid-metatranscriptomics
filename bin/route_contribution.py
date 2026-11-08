@@ -34,7 +34,7 @@ DESCRIPTION = {
     "isoseq_stringtie_trinity":        "+ de novo short-read loci (Trinity)",
     "isoseq_stringtie_lrfree":         "+ reference-free long-read loci only",
     "isoseq_stringtie_trinity_lrfree": "+ de novo short-read + reference-free long-read loci",
-    "all_sources_dedup":               "cross-source deduplicated (the assembly: annotated and scored here)",
+    "all_sources_dedup":               "cross-source deduplicated (the assembly: scored here, filtered below)",
 }
 
 

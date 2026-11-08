@@ -35,7 +35,8 @@ process FILTER_BY_EXPRESSION {
     """
     filter_by_expression.py \\
         --quant-dir quants --fasta ${fasta} --tx2gene ${tx2gene} \\
-        --min-tpm ${params.expr_filter_tpm} --min-samples ${params.expr_filter_samples} \\
+        --min-tpm ${params.expr_filter_tpm} --min-reads ${params.expr_filter_reads} \\
+        --min-samples ${params.expr_filter_samples} \\
         --out-fasta ${label}_expressed.fasta --out-tx2gene tx2gene.${label}_expressed.tsv \\
         --out-expressed-tx ${label}_expressed.de_eligible_tx.txt \\
         --log ${label}_expressed.filter.txt

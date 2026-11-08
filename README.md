@@ -338,6 +338,7 @@ CPUs, requested memory, elapsed) and are recorded with their evidence in `conf/m
 | `SALMON_QUANT` (×15) | 12 | 32 GB | 2–10 min each | measured at exactly this size |
 | `BUSCO_BUSCO` (×7) | 24 | 64 GB | 1–73 min | measured at exactly this size |
 | `DESEQ2`, `ENRICHMENT`, `FIGURES` | 8 | 48 GB | 2–15 min | single-threaded R |
+| `COUNT_MATRIX` | 2 | 32 GB | ~47 s | measured; 1.1 GB peak, one tximport pass per gene map |
 | table/summary steps | 1–2 | 4–16 GB | seconds | one pass over small files |
 
 Memory and time scale with `task.attempt`, so a task that dies on memory is retried larger rather

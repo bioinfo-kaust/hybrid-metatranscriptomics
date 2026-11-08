@@ -12,6 +12,24 @@ analysed and is listed under **Changed** below.
 
 ### Added
 
+- **`COUNT_MATRIX`: the count matrices themselves, one set per gene map, in
+  `quantification/gene_level/`.** The run published per-sample transcript `quant.sf` and, from
+  DESeq2, normalised and VST counts — but those are transformed, and they cover only the genes
+  that passed the presence pre-filter, so the raw gene-level matrix existed nowhere outside the
+  DESeq2 task and the gene FASTA shipped without the counts belonging to it. The pipeline does
+  not quantify genes directly: it quantifies transcripts and sums them with tximport, and this
+  writes that aggregation out, unfiltered — one row per gene in the map, including the ones DE
+  later drops. Published per map: `gene_counts` (what DESeq2 modelled), `gene_length` (the
+  `avgTxLength` offset it is paired with, without which the counts are a different analysis),
+  `gene_counts_lengthScaledTPM` (that correction folded in, for tools that cannot take an
+  offset) and `gene_tpm`, plus the three transcript-level matrices once.
+  The process is handed each map's `dds.rds` and **fails rather than publishing** unless
+  `round(counts)` is cell-for-cell identical to the count assay DESeq2 modelled and the length
+  matrix matches its offset exactly, so the published matrix is the DE input rather than a
+  plausible reconstruction of it; `gene_level/checks.txt` records the comparison. `README.txt`
+  also warns off `<sample>/quant.genes.sf`, which salmon writes from the string-stripped map
+  because the locus rebuild does not exist yet at quantification time, and which no reported
+  result uses.
 - **Every gene count on the dashboard and in `run_summary.txt` now names the map it comes from.**
   Three stages report a gene count from the string-stripped tx2gene because that is the map they
   were handed — the expression filter, the annotation module, and the dedup step feeding the

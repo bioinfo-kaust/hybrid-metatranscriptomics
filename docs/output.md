@@ -97,6 +97,25 @@ for the analysed set; the pre-filter pass that only produced TPMs for the filter
 `mapping_rates.tsv`; Corset's clusters and counts (`corset_<set>/`,
 `<set>_corset.summary.txt`).
 
+`gene_level/` holds the count matrices, one set per gene map, plus the transcript-level matrices
+underneath them. These are the numbers DESeq2 is handed: the pipeline never quantifies genes
+directly, it quantifies transcripts and sums them with tximport, and `COUNT_MATRIX` writes that
+aggregation out. It is checked against each map's `dds.rds` and the step fails rather than
+publishing if the two disagree — see `gene_level/checks.txt`, and `README.txt` for the full
+description.
+
+| Path | Content |
+| --- | --- |
+| `gene_level/gene_counts.<set>.tsv` | Estimated reads per gene per sample — what DESeq2 modelled. Unfiltered: one row per gene in the map, including those the DE presence pre-filter later drops |
+| `gene_level/gene_length.<set>.tsv` | Abundance-weighted average transcript length per gene per sample — the `avgTxLength` offset DESeq2 pairs the counts with. Using the counts without it is a different analysis |
+| `gene_level/gene_counts_lengthScaledTPM.<set>.tsv` | The same counts with that correction folded in and library sizes preserved, for tools that cannot take an offset |
+| `gene_level/gene_tpm.<set>.tsv` | Transcript TPM summed per gene. Within-sample composition; not for testing |
+| `gene_level/transcript_{counts,tpm,effective_length}.tsv` | The same quantities at transcript level: the per-sample `quant.sf` files as matrices |
+
+`<sample>/quant.genes.sf` is **not** one of these. Salmon writes it from the `--geneMap` it was
+handed at quantification time, which is necessarily the string-stripped map — the locus rebuild
+does not exist yet at that point in the pipeline. No reported result uses those files.
+
 ## Differential expression
 
 | Path | Content |

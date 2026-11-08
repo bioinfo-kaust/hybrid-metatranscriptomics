@@ -26,6 +26,7 @@ include { REMAP_ANNOTATION                             } from '../../../modules/
 include { GENE_FASTA                                   } from '../../../modules/local/gene_fasta'
 include { GENE_FASTA as GENE_FASTA_LOCUS               } from '../../../modules/local/gene_fasta'
 include { GENE_FASTA as GENE_FASTA_CORSET              } from '../../../modules/local/gene_fasta'
+include { COUNT_MATRIX                                 } from '../../../modules/local/count_matrix'
 include { DESEQ2                                       } from '../../../modules/local/deseq2'
 include { DESEQ2 as DESEQ2_LOCUS                       } from '../../../modules/local/deseq2'
 include { DESEQ2 as DESEQ2_CORSET                      } from '../../../modules/local/deseq2'
@@ -73,7 +74,8 @@ workflow QUANTIFY_AND_DGE {
     // ...and the same genes as sequence. A map alone leaves a gene as a sum of counts, with no
     // FASTA anyone can BLAST, score in protein mode or attach to a paper.
     GENE_FASTA(ch_tx2gene, ch_fasta, ch_pep)
-    ch_gene_rep = GENE_FASTA.out.table.map { _meta, f -> f }
+    ch_gene_rep    = GENE_FASTA.out.table.map { _meta, f -> f }
+    ch_gene_fastas = GENE_FASTA.out.fasta.map { _meta, f -> f }
 
     // a third gene map from read sharing, for comparison against the other two
     ch_corset     = channel.empty()
@@ -85,7 +87,8 @@ workflow QUANTIFY_AND_DGE {
         ch_gene_map_files = ch_gene_map_files.mix(CORSET.out.tx2gene.map { _meta, f -> f })
 
         GENE_FASTA_CORSET(CORSET.out.tx2gene, ch_fasta, ch_pep)
-        ch_gene_rep = ch_gene_rep.mix(GENE_FASTA_CORSET.out.table.map { _meta, f -> f })
+        ch_gene_rep    = ch_gene_rep.mix(GENE_FASTA_CORSET.out.table.map { _meta, f -> f })
+        ch_gene_fastas = ch_gene_fastas.mix(GENE_FASTA_CORSET.out.fasta.map { _meta, f -> f })
 
         // Same quantifications, same code path as the other two maps — only the tx2gene differs,
         // so a difference in the results is a difference in gene identity and nothing else.
@@ -127,7 +130,8 @@ workflow QUANTIFY_AND_DGE {
         // the primary gene definition of this pipeline, so its gene-level FASTA is the one most
         // likely to be used outside it
         GENE_FASTA_LOCUS(LOCUS_TX2GENE.out.tx2gene, ch_fasta, ch_pep)
-        ch_gene_rep = ch_gene_rep.mix(GENE_FASTA_LOCUS.out.table.map { _meta, f -> f })
+        ch_gene_rep    = ch_gene_rep.mix(GENE_FASTA_LOCUS.out.table.map { _meta, f -> f })
+        ch_gene_fastas = ch_gene_fastas.mix(GENE_FASTA_LOCUS.out.fasta.map { _meta, f -> f })
 
         if (!params.skip_dge) {
             DESEQ2_LOCUS(ch_quants, LOCUS_TX2GENE.out.tx2gene, ch_samplesheet, ch_contrasts, ch_expr_tx)
@@ -139,8 +143,28 @@ workflow QUANTIFY_AND_DGE {
         }
     }
 
+    // ------------------------------------------------- the counts behind every gene map
+    // Runs last because it wants every map that this run produced, and each map's dds.rds with it.
+    // Without this the gene FASTA ships without the counts that belong to it: the run publishes
+    // per-sample transcript quant.sf and DESeq2's normalised/VST counts, but the raw gene-level
+    // matrix -- the thing DESeq2 is actually handed -- existed only inside the DESeq2 task.
+    //
+    // Taking the dge_* directories as input is deliberate and is what makes the published matrix
+    // trustworthy rather than merely plausible: count_matrix.R compares its own aggregation
+    // against the count assay DESeq2 modelled and fails the task if they differ. The cost is that
+    // this step waits for DE, which is already the last thing in this subworkflow.
+    COUNT_MATRIX(
+        ch_quants,
+        ch_gene_map_files.collect(),
+        ch_gene_fastas.collect(),
+        ch_fasta.map { _meta, f -> f },
+        ch_dge.mix(ch_dge_corset, ch_dge_locus).map { _meta, d -> d }.collect().ifEmpty([]),
+        ch_samplesheet
+    )
+
     emit:
     quants         = ch_quants        // [ quant dirs ]
+    count_matrices = COUNT_MATRIX.out.matrices
     reference      = ch_fasta
     corset         = ch_corset
     gene_map_files = ch_gene_map_files

@@ -3,7 +3,7 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2.0.0dev
+## [2.0.0] - 2026-11-08
 
 The pipeline now follows the nf-core template: most of what changes is how it is laid out,
 configured and provisioned, with every step, argument and threshold carried over. The one
@@ -208,7 +208,7 @@ analysed and is listed under **Changed** below.
 - `LOCUS_TX2GENE` has no container yet (placeholder tag `LOCUS_*_PENDING`; Wave was rate-limited):
   it runs under `-profile envmodules` only until the image is built.
 
-## 1.1.0dev — optional inputs (merged into 2.0.0dev)
+## 1.1.0dev — optional inputs (merged into 2.0.0)
 
 ### Changed
 

@@ -6,7 +6,7 @@ template:
   outdir: .
   author: BioCore Lab
   description: Hybrid long- and short-read transcriptome assembly, annotation and differential expression for a host with symbionts
-  version: 2.0.0
+  version: 2.0.1dev
   is_nfcore: false
   skip_features:
     - igenomes

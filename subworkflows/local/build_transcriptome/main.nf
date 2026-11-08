@@ -191,7 +191,7 @@ workflow BUILD_TRANSCRIPTOME {
         }
         // collapse the assembler's own isoform redundancy, then keep only what the base lacks
         CLUSTER_DENOVO(ch_trin)
-        NOVEL_DENOVO(CLUSTER_DENOVO.out.centroids, ch_novelty_ref, params.cdhit_dedup_id, params.prefix_denovo)
+        NOVEL_DENOVO(CLUSTER_DENOVO.out.centroids, ch_novelty_ref, (params.cdhit_dedup_id ?: params.cluster_dedup_id), params.prefix_denovo)
         ch_denovo_novel = NOVEL_DENOVO.out.fasta.map { _meta, fa -> fa }
     }
 
@@ -210,7 +210,7 @@ workflow BUILD_TRANSCRIPTOME {
         ch_lrfree_nr = CLUSTER_LRFREE_NR.out.centroids
 
         // (a) what Route B adds to the base, on its own
-        NOVEL_LRFREE_A(ch_lrfree_nr, ch_novelty_ref, params.cdhit_dedup_id, params.prefix_lrfree)
+        NOVEL_LRFREE_A(ch_lrfree_nr, ch_novelty_ref, (params.cdhit_dedup_id ?: params.cluster_dedup_id), params.prefix_lrfree)
         ch_lrfree_novel_vs_base = NOVEL_LRFREE_A.out.fasta.map { _meta, fa -> fa }
     }
 
@@ -234,7 +234,7 @@ workflow BUILD_TRANSCRIPTOME {
 
     // (b) what Route B still adds once the de novo set is already in — its unique contribution
     if (do_routeb && !params.skip_denovo) {
-        NOVEL_LRFREE_B(ch_lrfree_nr, ch_with_trinity, params.cdhit_dedup_id, params.prefix_lrfree)
+        NOVEL_LRFREE_B(ch_lrfree_nr, ch_with_trinity, (params.cdhit_dedup_id ?: params.cluster_dedup_id), params.prefix_lrfree)
         ch_all_sources = MERGE_ALL_SOURCES(
             ch_with_trinity.map { _meta, fa -> fa }
                 .combine(NOVEL_LRFREE_B.out.fasta.map { _meta, fa -> fa })

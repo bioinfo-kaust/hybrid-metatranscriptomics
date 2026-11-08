@@ -3,6 +3,27 @@
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] - 2.0.1dev
+
+### Changed
+
+- **The two clustering identity parameters no longer claim to be CD-HIT.** `cdhit_dedup_id` and
+  `cdhit_longread_id` are now `cluster_dedup_id` and `cluster_longread_id`. The pipeline does not
+  run CD-HIT anywhere: the clustering is vsearch (`--iddef 2 --query_cov`, chosen precisely
+  because cd-hit-est measures identity over the shorter sequence and leaves the coverage floor
+  implicit) and the cross-source novelty test is minimap2, which replaced cd-hit-est-2d. The names
+  outlived the tools and invited a reader — or a methods section — to credit software that never
+  ran. The old names keep working as deprecated aliases and win when set, so an existing params
+  file keeps its value rather than silently reverting to the default; they are hidden in the schema
+  and scheduled for removal in 3.0.0. Resolved arguments are unchanged (`--id 0.95 --iddef 2
+  --query_cov 0.9 --strand both`), so no task hash moves and a run in progress stays resumable.
+
+### Removed
+
+- **`mod.cdhit` (`cdhit/4.8.1`) from the environment-module map.** No process loaded it. It was a
+  leftover of the CD-HIT era and the only remaining thing in the pipeline implying CD-HIT is a
+  dependency, so a reader auditing the tool list from the config was misled by it.
+
 ## [2.0.0] - 2026-11-08
 
 The pipeline now follows the nf-core template: most of what changes is how it is laid out,

@@ -327,15 +327,15 @@
                     "default": 300,
                     "description": "Minimum length of a novel transcript added to the reference."
                 },
-                "cdhit_longread_id": {
+                "cluster_longread_id": {
                     "type": "number",
                     "default": 0.99,
-                    "description": "Route B: collapse near-identical long-read isoforms."
+                    "description": "Route B: collapse near-identical long-read isoforms (vsearch --id)."
                 },
-                "cdhit_dedup_id": {
+                "cluster_dedup_id": {
                     "type": "number",
                     "default": 0.95,
-                    "description": "Cross-source dedup / de novo isoform collapse."
+                    "description": "Cross-source dedup / de novo isoform collapse (vsearch --id, and the minimap2 novelty identity)."
                 },
                 "cluster_min_cov": {
                     "type": "number",
@@ -392,6 +392,26 @@
                     "default": "TR_:_i[0-9]+$;PBR_:;:\\.[0-9]+$",
                     "description": "Per-source transcript -> gene rules: 'prefix:isoform_suffix_regex', ';'-separated, first match wins, empty regex = no grouping (gene == transcript).",
                     "help_text": "Per-source transcript -> gene rules: 'prefix:isoform_suffix_regex', ';'-separated, first match wins, empty regex = no grouping (gene == transcript). Used for the string-stripped tx2gene map; the locus rebuild below is the coordinate-based alternative."
+                },
+                "cdhit_longread_id": {
+                    "type": [
+                        "number",
+                        "null"
+                    ],
+                    "default": null,
+                    "hidden": true,
+                    "description": "Deprecated alias for cluster_longread_id; named after CD-HIT, which this pipeline does not run.",
+                    "help_text": "Kept so an existing params file keeps working: when set it overrides cluster_longread_id. The clustering is vsearch and the novelty test is minimap2. Use cluster_longread_id; this name will be removed in 3.0.0."
+                },
+                "cdhit_dedup_id": {
+                    "type": [
+                        "number",
+                        "null"
+                    ],
+                    "default": null,
+                    "hidden": true,
+                    "description": "Deprecated alias for cluster_dedup_id; named after CD-HIT, which this pipeline does not run.",
+                    "help_text": "Kept so an existing params file keeps working: when set it overrides cluster_dedup_id. The clustering is vsearch and the novelty test is minimap2. Use cluster_dedup_id; this name will be removed in 3.0.0."
                 }
             }
         },

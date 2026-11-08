@@ -1427,13 +1427,19 @@ stage("routea", "Long reads on the genome", "Assembly", "pbmm2 + isoseq collapse
        M("BUSCO complete", f"{lr_row['busco']['complete']:.1f}%" if lr_row and lr_row["busco"] else "—")],
       "assembly/isoseq/")
 
+# The clustering identity thresholds. Renamed cluster_* in 2.0.1dev because they had been named
+# for CD-HIT, which this pipeline does not run; the cdhit_* fallback keeps a results directory
+# written by an earlier run readable, since this page is rebuilt from the params json THAT run
+# recorded, not from the current config.
+_CLUSTER_LR_ID    = P("cluster_longread_id", P("cdhit_longread_id", 0.99))
+_CLUSTER_DEDUP_ID = P("cluster_dedup_id", P("cdhit_dedup_id", 0.95))
+
 stage("routeb", "Long reads, reference-free", "Assembly", "vsearch",
       on("skip_longread") and on("skip_reffree"),
       "Collapses near-identical isoforms without consulting the genome, so loci missing from a draft "
       "assembly survive. vsearch rather than cd-hit-est: the identity definition is stated rather "
-      "than implied, where cd-hit measures matches over the shorter sequence without saying so. "
-      "The params are still named cdhit_* for continuity with earlier runs.",
-      [f"vsearch --cluster_fast --id {P('cdhit_longread_id', 0.99)}", f"prefix = {P('prefix_lrfree', 'PBR_')}"],
+      "than implied, where cd-hit measures matches over the shorter sequence without saying so.",
+      [f"vsearch --cluster_fast --id {_CLUSTER_LR_ID}", f"prefix = {P('prefix_lrfree', 'PBR_')}"],
       [M("added to the reference", added("isoseq_stringtie_lrfree", "isoseq_stringtie"))],
       "assembly/clustering/")
 
@@ -1457,7 +1463,9 @@ stage("trinity", "Short reads de novo", "Assembly", "Trinity", on("skip_denovo")
       "Its output is audited for residual contamination, collapsed against itself, then reduced to "
       "what the genome-guided reference does not already contain.",
       [f"--SS_lib_type {'RF' if P('strandedness') == 'reverse' else 'FR'}",
-       f"cd-hit-est / -est-2d -c {P('cdhit_dedup_id', 0.95)}",
+       f"vsearch --cluster_fast --id {_CLUSTER_DEDUP_ID} to collapse it against itself",
+       f"then minimap2 -x asm20: already represented when an alignment covers "
+       f"{P('novelty_min_cov', 0.9)} of a transcript at identity {_CLUSTER_DEDUP_ID}",
        f"prefix = {P('prefix_denovo', 'TR_')}"],
       [M("added", added("isoseq_stringtie_trinity", "isoseq_stringtie")),
        M("assembly-only libraries", fmt(len(assembly_reads)) if assembly_reads else "—")],
@@ -1466,7 +1474,7 @@ stage("trinity", "Short reads de novo", "Assembly", "Trinity", on("skip_denovo")
 stage("dedup", "Cross-source deduplication", "Assembly", "vsearch", True,
       "The layered set counts one biological locus once per source that recovered it. Deduplication "
       "reduces that; it does not eliminate it — which is what the locus rebuild below addresses.",
-      [f"vsearch --cluster_fast --id {P('cdhit_dedup_id', 0.95)}"],
+      [f"vsearch --cluster_fast --id {_CLUSTER_DEDUP_ID}"],
       [M("the assembly (before the filter)", fmt(ref_row["transcripts"]) if ref_row else "—"),
        M("BUSCO complete", f"{ref_row['busco']['complete']:.1f}%" if ref_row and ref_row["busco"] else "—")],
       "transcriptome/")
@@ -2508,9 +2516,9 @@ function thresholdTable() {
       'a pair is dropped when EITHER mate matches');
   add('Contaminant removal', 'best primary alignment is to a contaminant genome', 'read pair',
       'reads aligning nowhere are KEPT, not dropped');
-  add('Long-read clustering (route B)', `vsearch --id ${p('cdhit_longread_id', 0.99)}`, 'transcript',
+  add('Long-read clustering (route B)', `vsearch --id ${p('cluster_longread_id', p('cdhit_longread_id', 0.99))}`, 'transcript',
       'collapses near-identical long-read isoforms');
-  add('Cross-source deduplication', `vsearch --id ${p('cdhit_dedup_id', 0.95)}`, 'transcript',
+  add('Cross-source deduplication', `vsearch --id ${p('cluster_dedup_id', p('cdhit_dedup_id', 0.95))}`, 'transcript',
       F.genes_before ? `${n(F.genes_before)} genes (string-stripped: the locus map needs genome placement and is built for the analysed set only) enter the expression filter`
                      : 'produces all_sources_dedup');
   add('Novel-vs-reference call', 'minimap2 -x asm20 -c --secondary=no', 'transcript',
